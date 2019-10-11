@@ -303,4 +303,18 @@ parser = TokenParser(query)
 OPTIONAL OPERATIONS:
 RESIZE(...,mvarg)|STATE(...,starg)|RENAME(...,name)
 VIEWPORT(x,y)
+
+def wmctrl_status():
+    try:
+        with open(os.devnull, 'w') as null:
+            proc = subprocess.Popen("wmctrl", stdout=null, stderr=null)
+            proc.communicate()
+        return True
+    except OSError:
+        return False
+
+if (not wmctrl_status()):
+    print("Error, lol")
+    exit(1)
+
 '''

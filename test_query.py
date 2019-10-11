@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 from __future__ import print_function
 
 from subprocess import Popen, PIPE
@@ -57,35 +56,11 @@ class TokensType:
     @staticmethod
     def is_value_token(tokenName):
         tokenType = TokensType.get(tokenName)
-        return tokenName != TokensType.BINARY_OPERATOR and tokenType == None
+        return tokenName != TokensType.BINARY_OPERATOR and tokenType is None
 
-def execute_subprocess(task):
-    p = Popen(task, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    output, err = p.communicate()
-    rc = p.returncode
-    if rc == 1:
-        raise WmctrlExeption("Can't execute `wmctrl`, exit code: `1`, error: %s"%err)
-    return output.decode("utf-8")
-
-def dict_from_regex(target, reg):
-    return [m.groupdict() for m in reg.finditer(target)]
-
-# <windowId> <desktopId> <client> <windowTitle>
-def get_windows_list():
-    output_str = execute_subprocess(['wmctrl', '-l'])
-    regex_window_list = re.compile(r'(?P<windowId>0x[0-9A-Fa-f]{8})\s+(?P<desktopId>[0-9]{0,5})\s+(?P<client>[A-Za-z0-9]+)\s+(?P<windowTitle>.+)\n')
-    return dict_from_regex(output_str, regex_window_list)
-
-# <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
-def get_desktop_list():
-    output_str = execute_subprocess(['wmctrl', '-d'])
-    regex_desktop_list = re.compile(r'(?P<desktopId>[0-9]{1,3})\s+(?P<active>[-*]{1})\s+DG:\s+(?P<geometry>[0-9]{1,4}x[0-9]{1,4})\s+VP:\s+(?P<viewPort>N/A|(?:[0-9]{1,5}\,[0-9]{1,5}))\s+WA:\s+(?P<workAreaGeometry>[0-9]{1,5}\,[0-9]{1,5})\s+(?P<workAreaResolution>[0-9]{1,4}x[0-9]{1,4})\s+(?P<title>[\s\w/]+)\n')
-    return dict_from_regex(output_str, regex_desktop_list)
-    
-windows_list = get_windows_list()
-desktop_list = get_desktop_list()
 
 def filter_all(arr):
+    print("Filter `ALL` values")
     return arr
 
 def is_window_id_valid(id):
@@ -93,81 +68,49 @@ def is_window_id_valid(id):
     return False if re.fullmatch(reg,id) is None else True
 
 def all_token_execute(result):
-    result['return_processor'] = filter_all
-    result['result_list'] = filter_all(windows_list)
-    print("get all windows")
+    print("Execute `ALL` selector")
     return result
 
 def filter_first(arr):
+    print("Filter `FIRST` values")
     return [ arr[0] ]
 
 def single_token_execute(result):
-    result['return_processor'] = filter_first
-    result['result_list'] = filter_first(windows_list)
-    print("get first window")
+    print("Execute `SINGLE` selector")
     return result
 
 def id_token_execute(result):
     if (not is_window_id_valid(result['value'])): 
         raise WrongQueryParameterException("Not valid window id %s in `BY ID() filter`"%id)
-
-    result_list = [window for window in windows_list if result['value'] == window['windowId'] ]
-    check_filter_results(result_list)
-    result['result_list'] = result_list
-    print("Id filter execute")
-    print(result_list)
+    print("Execute `BY ID` filter")
     return result
 
 def contains_token_execute(result):
-    result_list = [window for window in windows_list if result['value'] in window['windowTitle'] ]
-    check_filter_results(result_list)
-    result_list = result['return_processor'](result_list)
-    result['result_list'] = result_list
-    print("Contains execute")
-    print(result_list)
+    print("Execute `BY CONTAINS` filter")
     return result
 
 def full_token_execute(result):
-    result_list = [window for window in windows_list if result['value'] ==  window['windowTitle'] ]
-    check_filter_results(result_list)
-    result_list = result['return_processor'](result_list)
-    result['result_list'] = result_list
-    print("Full execute")
-    print(result_list)
+    print("Execute `BY FULL` filter")
     return result
 
 def regex_token_execute(result):
     try:
-        print(result['value'])
-        result_list = [window for window in windows_list if re.match(result['value'], window['windowTitle']) ]
+        re.match(result['value'], "Test string")
     except re.error:
         raise WrongQueryParameterException("Invalid regex")
-    check_filter_results(result_list)
-    result_list = result['return_processor'](result_list)
-    result['result_list'] = result_list
-    print("Regex execute")
-    print(result_list)
+    print("Execute `BY REGEX` filter")
     return result
 
-'''
-unary operators:
-SWITCH(desktopId)|ACTIVE(windowId)
-
-data_proc operators:
-ALL|SINGLE BY ID|REGEX|CONTAINS|FULL(value) -> CLOSE|MV_SEPARATE(desktopRange)|MV_TO(desktopId)
-'''
-# result['value']
-# MV_TO, MV_SEPARATE, CLOSE
 
 def mvto_token_execute(result):
-    print("MVTO")
+    print("Execute `MV_TO` command")
     return result
 def mvseparate_token_execute(result):
-    print("MV_SEPARATE")
+    print("Execute `MV_SEPARATE` command")
     return result
 
 def close_token_execute(result):
-    print("CLOSE THEM")
+    print("Execute `CLOSE` command")
     return result
 
 def check_filter_results(result_list):
@@ -178,14 +121,12 @@ def switch_token_execute(id):
     reg = r"[0-9]{1,3}"
     if (re.fullmatch(reg,id) is None):
         raise WrongQueryParameterException("Not valid desktop id %s in `SWITCH`"%id)
-    print("execute switch")
-    # run
+    print("Execute `SWITCH` command")
 
 def active_token_execute(id):
     if (not is_window_id_valid(id)):
         raise WrongQueryParameterException("Not valid window id %s in `ACTIVE`"%id)
-    print("execute active")
-    # run
+    print("Execute `ACTIVE` command")
 
 EXECUTOR_FUNCS = {
     TokensType.ALL : all_token_execute,
@@ -218,7 +159,6 @@ class QueryExecutor:
                 iterator = range(0, len(self.tokens)).__iter__()
                 for i in iterator:
                     token = self.tokens[i]
-                    print("Process %s"%token)
                     if (TokensType.is_executable(token)):
                         tokenType = TokensType.get(token)
                         executor = EXECUTOR_FUNCS[tokenType]
@@ -230,12 +170,9 @@ class QueryExecutor:
                             except IndexError:
                                 raise WrongQueryParameterException("%s token require value..."%token)
                         self.result = executor(self.result)
-                    print("After execute %s now result look like"%token)
-                    print(self.result)
            
         except KeyError: 
             raise ExecuteTaskException("Can't execute query %s, there is no implementation of one of the tokens"%self.query)
-
     def is_valid_value(self, token, value):
         if not TokensType.is_value_token(value):
             raise WrongQueryParameterException("Seems, like after `%s` expected value, but it `%s`"%(token, value))
@@ -294,13 +231,13 @@ class TokenParser:
         return [ result['token'], result['tokenValue'] ]
 
 
-#query = "ACTIVE('0x32454354')"
-query = "ALL BY CONTAINS ('Firefox') -> MV_TO (0x43243)"
+import argparse
 
-parser = TokenParser(query)
 
-'''
-OPTIONAL OPERATIONS:
-RESIZE(...,mvarg)|STATE(...,starg)|RENAME(...,name)
-VIEWPORT(x,y)
-'''
+
+parser = argparse.ArgumentParser()
+parser.add_argument('query', type=str, action="store")
+
+args = parser.parse_args()
+
+TokenParser(args.query)

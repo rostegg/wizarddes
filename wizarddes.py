@@ -66,7 +66,7 @@ def execute_subprocess(task):
     output, err = p.communicate()
     rc = p.returncode
     if rc == 1:
-        raise WmctrlExeption("Can't execute `wmctrl`, exit code: `1`, error: %s"%err)
+        raise WmctrlExeption("Can't execute `wmctrl`, exit code: `1`, error: %s"%str(err))
     return output.decode("utf-8")
 
 def dict_from_regex(target, reg):
@@ -91,6 +91,7 @@ def filter_all(arr):
     return arr
 
 def is_window_id_valid(id):
+    print(id)
     reg = r"0x[0-9A-Fa-f]{8}"
     return False if re.fullmatch(reg,id) is None else True
 
@@ -226,14 +227,14 @@ def switch_token_execute(id):
     reg = r"[0-9]{1,3}"
     if (re.fullmatch(reg,id) is None):
         raise WrongQueryParameterException("Not valid desktop id %s in `SWITCH`"%id)
-    print("execute switch")
-    # run
+    command = ['wmctrl', id]
+    execute_subprocess(command)
 
 def active_token_execute(id):
     if (not is_window_id_valid(id)):
         raise WrongQueryParameterException("Not valid window id %s in `ACTIVE`"%id)
-    print("execute active")
-    # run
+    command = ['wmctrl', '-ia', id]
+    execute_subprocess(command)
 
 EXECUTOR_FUNCS = {
     TokensType.ALL : all_token_execute,
@@ -293,6 +294,8 @@ class QueryExecutor:
         if (len(self.tokens) != 2):
             raise WrongQueryParameterException("Unary operator requires only value and nothing more")
         executor = EXECUTOR_FUNCS[tokenType]
+        print("AAAAAAAAAAAAAAAAAAA")
+        print(self.tokens[1])
         executor(self.tokens[1])
     
 class TokenParser:
@@ -343,8 +346,34 @@ class TokenParser:
             raise ParseTokenException("Bad token: %s"%(token))
         return [ result['token'], result['tokenValue'] ]
 
+# main script
+
 class PrintUtil:
-    pass
+    class Colors:
+        HEADER = '\033[95m'
+        OKBLUE = '\033[94m'
+        OKGREEN = '\033[92m'
+        WARNING = '\033[93m'
+        FAIL = '\033[91m'
+        ENDC = '\033[0m'
+        BOLD = '\033[1m'
+        UNDERLINE = '\033[4m'
+    
+    @staticmethod
+    def log_error(msg):
+        print("%s[!] %s%s"%(PrintUtil.Colors.FAIL, msg, PrintUtil.Colors.ENDC))
+    
+    @staticmethod
+    def log_warn(msg):
+        print("%s[!] %s%s"%(PrintUtil.Colors.WARNING, msg, PrintUtil.Colors.ENDC))
+
+    @staticmethod
+    def log_info(msg):
+        print("%s[-] %s%s"%(PrintUtil.Colors.OKBLUE, msg, PrintUtil.Colors.ENDC))
+
+    @staticmethod
+    def log_success(msg):
+        print("%s[+] %s%s"%(PrintUtil.Colors.OKGREEN, msg, PrintUtil.Colors.ENDC))
 
 
 def wmctrl_status():
@@ -357,12 +386,16 @@ def wmctrl_status():
         return False
 
 if (not wmctrl_status()):
+    PrintUtil.log_error("Seems, like `wmctrl` is not installed...")
     exit(1)
 
-
-query = "ALL BY CONTAINS ('Studio Code') -> MV_TO(4)"
-
+#query = "ALL BY CONTAINS ('Studio Code') -> MV_TO(4)"
+query = "SINGLE BY CONTAINS ('Firefox') -> ACTIVE"
 parser = TokenParser(query)
+
+def main():
+    pass
+
 
 
 '''

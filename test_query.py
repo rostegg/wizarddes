@@ -233,8 +233,6 @@ class TokenParser:
 
 import argparse
 
-
-
 parser = argparse.ArgumentParser()
 parser.add_argument('query', type=str, action="store")
 

@@ -30,6 +30,8 @@ class TokensType:
 
     BINARY_OPERATOR = '->' 
 
+    AVAILABLE_INTERVAL_TOKEN = '*'
+
     TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE]
 
     @staticmethod
@@ -159,15 +161,43 @@ ALL|SINGLE BY ID|REGEX|CONTAINS|FULL(value) -> CLOSE|MV_SEPARATE(desktopRange)|M
 # result['value']
 # MV_TO, MV_SEPARATE, CLOSE
 
+class DesktopManager:
+
+    def __init__(self, desktop_list):
+        self.desktop_list = desktop_list
+    
+    def distributeWindows(self, targets_list, interval):
+        from_id, to_id = 0, len(targets_list) if interval is TokensType.AVAILABLE_INTERVAL_TOKEN else self.__parse_interval(interval)
+        self.distributeWindowsByRange(targets_list, from_id, to_id)
+
+    def distributeWindowsByRange(self, targets_list, id_from, id_to):
+        command = ['wmctrl', '-r', 'windowId', '-t', 'desktopId']
+        for index, desktop_id in enumerate(range(id_from, id_to)):
+            command[2] = targets_list[index].windowId
+            command[4] = str(desktop_id)
+            execute_subprocess(command)
+
+    def __parse_interval(self,interval):
+        pass
+
+
+
 def mvto_token_execute(result):
-    print("MVTO")
+    command = ['wmctrl', '-r', 'windowId', '-t', result['value']]
+    for window in result['result_list']:
+        command[2] =  window.windowId
+        execute_subprocess(command)
     return result
+
 def mvseparate_token_execute(result):
-    print("MV_SEPARATE")
+    result['desktopManager'].distributeWindows(result['result_list'], result['value'])
     return result
 
 def close_token_execute(result):
-    print("CLOSE THEM")
+    command = ['wmctrl', '-c', 'windowId']
+    for window in result['result_list']:
+        command[2] = window.windowId
+        execute_subprocess(command)
     return result
 
 def check_filter_results(result_list):
@@ -208,6 +238,7 @@ class QueryExecutor:
     def __init__(self, tokens, query):
         self.query = query
         self.tokens = tokens
+        self.result['desktopManager'] = DesktopManager(desktop_list)
     
     def execute(self):
         try:

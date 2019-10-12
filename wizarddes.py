@@ -282,7 +282,7 @@ class TokenParser:
         self.simplified_tokens = self.simplify_tokens()
         self.query_executor = QueryExecutor(self.simplified_tokens, self.expression)
 
-    def run(self):
+    def execute(self):
         self.query_executor.execute()
 
     def simplify_tokens(self):
@@ -435,22 +435,46 @@ Queries examples:
 
 def get_params():
     parser = argparse.ArgumentParser(description="Automatize your desktop management", epilog=epilog_msg, formatter_class=RawTextHelpFormatter)
+    parser.add_argument("--single-query", help="Execute single query",
+                    action="store")
+    parser.add_argument("--query-file", help="Path to query file",
+                    action="store")
+
     args = parser.parse_args()
     return args
 
 options = get_params()
 
-#query = "ALL BY CONTAINS ('Studio Code') -> MV_TO(4)"
-#query = "SINGLE BY CONTAINS ('Firefox') -> ACTIVE"
-#query = "SWITCH (1)"
-#query = "ALL BY CONTAINS(Firefox) -> MV_SEPARATE(*)"
-#parser = TokenParser(query)
+def execute_single_query(query):
+    # parse exceptions
+    tokenizer = TokenParser(query)
+    tokenizer.execute()
 
-def main():
+def parse_query_file(file_path):
+    return []
+
+def execute_custom_query_file(file_path):
     pass
 
+def execute_default_query_file():
+    default_path = ""
+    queries = parse_query_file(default_path)
+    pass
+
+def main():
+    print()
+    if (options.single_query is not None):
+        execute_single_query(options.single_query)
+        exit(0)
+    else:
+        if (options.query_file):
+            execute_custom_query_file(options.query_file)
+            exit(0)
+        else:
+            execute_default_query_file()
 
 '''
+TODO 
 RESIZE(mvarg)|STATE(starg)|RENAME(name)
 VIEWPORT(x,y)
 '''

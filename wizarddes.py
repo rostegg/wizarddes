@@ -457,7 +457,7 @@ def execute_custom_query_file(file_path):
     pass
 
 def execute_default_query_file():
-    default_path = ""
+    default_path = "/etc/rules.txt"
     queries = parse_query_file(default_path)
     pass
 

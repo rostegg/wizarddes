@@ -3,7 +3,7 @@
 from __future__ import print_function
 
 from subprocess import Popen, PIPE
-import re
+import re, os, argparse
 
 class ParseTokenException(Exception):
     pass
@@ -167,25 +167,42 @@ class DesktopManager:
         self.desktop_list = desktop_list
     
     def distributeWindows(self, targets_list, interval):
-        from_id, to_id = 0, len(targets_list) if interval is TokensType.AVAILABLE_INTERVAL_TOKEN else self.__parse_interval(interval)
-        self.distributeWindowsByRange(targets_list, from_id, to_id)
 
-    def distributeWindowsByRange(self, targets_list, id_from, id_to):
-        command = ['wmctrl', '-r', 'windowId', '-t', 'desktopId']
-        for index, desktop_id in enumerate(range(id_from, id_to)):
-            command[2] = targets_list[index].windowId
+        interval_arr =[ i for i in range(0, len(targets_list))] if interval is TokensType.AVAILABLE_INTERVAL_TOKEN else self.__parse_interval(interval, len(targets_list))
+        self.distributeWindowsByRange(targets_list, interval_arr)
+
+    def distributeWindowsByRange(self, targets_list, ids_list):
+        command = ['wmctrl', '-ir', 'windowId', '-t', 'desktopId']
+        for index, desktop_id in enumerate(ids_list):
+            command[2] = targets_list[index]['windowId']
             command[4] = str(desktop_id)
             execute_subprocess(command)
 
-    def __parse_interval(self,interval):
-        pass
-
-
+    '''
+        Available intervals syntax:
+            1,|1|1-     - FROM
+            ,3|-3       - TO
+            1-3         - RANGE
+            1,3,5       - SEQUENCE
+    '''
+    def __parse_interval(self,interval, default_to):
+        cleared_interval = "".join(interval.split())
+        sequnce_regex = r"(?:[0-9]{1,3},){2,}[0-9]{1,3}$"
+        primal_regex = re.compile(r"(?P<fromId>[0-9]{1,3})?\-?(?P<toId>[0-9]{1,3})?")
+        if (re.fullmatch(sequnce_regex, cleared_interval) is not None):
+            return list(map(int, cleared_interval.split(',')))
+        else:
+            # maybe change primal regex later, to avoide excess data (false positive triggering, beacuse all <?>)
+            interval_dict = dict_from_regex(cleared_interval, primal_regex)
+            from_id = interval_dict[0].fromId if interval_dict[0].fromId is not None else 0
+            to_id = interval_dict[0].toId if interval_dict[0].toId is not None else default_to
+            return [i for i in range(from_id, to_id)]
 
 def mvto_token_execute(result):
-    command = ['wmctrl', '-r', 'windowId', '-t', result['value']]
+    command = ['wmctrl', '-ir', 'windowId', '-t', result['value']]
+    print(command)
     for window in result['result_list']:
-        command[2] =  window.windowId
+        command[2] =  window['windowId']
         execute_subprocess(command)
     return result
 
@@ -194,9 +211,10 @@ def mvseparate_token_execute(result):
     return result
 
 def close_token_execute(result):
-    command = ['wmctrl', '-c', 'windowId']
+    command = ['wmctrl', '-ic', 'windowId']
     for window in result['result_list']:
-        command[2] = window.windowId
+        print(window)
+        command[2] = window['windowId']
         execute_subprocess(command)
     return result
 
@@ -317,35 +335,43 @@ class TokenParser:
         return list(re.split(delimeter, self.expression))    
 
     def is_token_with_value(self, token):
-        reg = r"(?P<token>[\S]+)\(\W?(?P<tokenValue>[\w\s\S]+)\W{1}\)"
+        # closing ? from {1}
+        reg = r"(?P<token>[\S]+)\(\W?(?P<tokenValue>[\w\s\S]+)\W?\)"
         result = re.search(reg,token)
 
         if result is None:
             raise ParseTokenException("Bad token: %s"%(token))
         return [ result['token'], result['tokenValue'] ]
 
+class PrintUtil:
+    pass
 
-#query = "ACTIVE('0x32454354')"
-query = "ALL BY CONTAINS ('Firefox') -> MV_TO (0x43243)"
-
-parser = TokenParser(query)
-
-'''
-OPTIONAL OPERATIONS:
-RESIZE(...,mvarg)|STATE(...,starg)|RENAME(...,name)
-VIEWPORT(x,y)
 
 def wmctrl_status():
     try:
         with open(os.devnull, 'w') as null:
-            proc = subprocess.Popen("wmctrl", stdout=null, stderr=null)
+            proc = Popen("wmctrl", stdout=null, stderr=null)
             proc.communicate()
         return True
     except OSError:
         return False
 
 if (not wmctrl_status()):
-    print("Error, lol")
     exit(1)
+
+
+query = "ALL BY CONTAINS ('Studio Code') -> MV_TO(4)"
+
+parser = TokenParser(query)
+
+
+'''
+
+
+OPTIONAL OPERATIONS:
+RESIZE(...,mvarg)|STATE(...,starg)|RENAME(...,name)
+VIEWPORT(x,y)
+
+
 
 '''

@@ -439,9 +439,14 @@ def get_params():
                     action="store")
     parser.add_argument("--query-file", help="Path to query file",
                     action="store")
+    import sys
+    if len(sys.argv[1:])==0:
+        parser.print_help()
+        exit(0)
 
-    args = parser.parse_args()
-    return args
+    options = parser.parse_args()
+    return options
+    
 
 options = get_params()
 
@@ -462,7 +467,6 @@ def execute_default_query_file():
     pass
 
 def main():
-    print()
     if (options.single_query is not None):
         execute_single_query(options.single_query)
         exit(0)
@@ -473,6 +477,8 @@ def main():
         else:
             execute_default_query_file()
 
+if __name__ == "__main__":
+    main()
 '''
 TODO 
 RESIZE(mvarg)|STATE(starg)|RENAME(name)

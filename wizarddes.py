@@ -4,11 +4,12 @@ from __future__ import print_function
 
 from subprocess import Popen, PIPE
 import re, os, argparse
+from argparse import RawTextHelpFormatter
 
 class ParseTokenException(Exception):
     pass
 
-class ExecuteTaskException(Exception):
+class ExecuteQueryException(Exception):
     pass
 
 class WrongQueryParameterException(Exception):
@@ -23,7 +24,7 @@ class EmptyQueryResult(Exception):
 class TokensType:
     ALL, SINGLE, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE = range(12)
 
-    UNARY_OPERATORS = [SWITCH, ACTIVE]
+    UNARY_OPERATORS = [SWITCH]
     BINARY_OPERATORS = [ALL, SINGLE]
 
     EXECUTABLE = [ALL, SINGLE, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH] 
@@ -91,14 +92,12 @@ def filter_all(arr):
     return arr
 
 def is_window_id_valid(id):
-    print(id)
     reg = r"0x[0-9A-Fa-f]{8}"
     return False if re.fullmatch(reg,id) is None else True
 
 def all_token_execute(result):
     result['return_processor'] = filter_all
     result['result_list'] = filter_all(windows_list)
-    print("get all windows")
     return result
 
 def filter_first(arr):
@@ -107,7 +106,6 @@ def filter_first(arr):
 def single_token_execute(result):
     result['return_processor'] = filter_first
     result['result_list'] = filter_first(windows_list)
-    print("get first window")
     return result
 
 def id_token_execute(result):
@@ -117,8 +115,6 @@ def id_token_execute(result):
     result_list = [window for window in windows_list if result['value'] == window['windowId'] ]
     check_filter_results(result_list)
     result['result_list'] = result_list
-    print("Id filter execute")
-    print(result_list)
     return result
 
 def contains_token_execute(result):
@@ -126,8 +122,6 @@ def contains_token_execute(result):
     check_filter_results(result_list)
     result_list = result['return_processor'](result_list)
     result['result_list'] = result_list
-    print("Contains execute")
-    print(result_list)
     return result
 
 def full_token_execute(result):
@@ -135,32 +129,17 @@ def full_token_execute(result):
     check_filter_results(result_list)
     result_list = result['return_processor'](result_list)
     result['result_list'] = result_list
-    print("Full execute")
-    print(result_list)
     return result
 
 def regex_token_execute(result):
     try:
-        print(result['value'])
         result_list = [window for window in windows_list if re.match(result['value'], window['windowTitle']) ]
     except re.error:
         raise WrongQueryParameterException("Invalid regex")
     check_filter_results(result_list)
     result_list = result['return_processor'](result_list)
     result['result_list'] = result_list
-    print("Regex execute")
-    print(result_list)
     return result
-
-'''
-unary operators:
-SWITCH(desktopId)|ACTIVE(windowId)
-
-data_proc operators:
-ALL|SINGLE BY ID|REGEX|CONTAINS|FULL(value) -> CLOSE|MV_SEPARATE(desktopRange)|MV_TO(desktopId)
-'''
-# result['value']
-# MV_TO, MV_SEPARATE, CLOSE
 
 class DesktopManager:
 
@@ -201,7 +180,6 @@ class DesktopManager:
 
 def mvto_token_execute(result):
     command = ['wmctrl', '-ir', 'windowId', '-t', result['value']]
-    print(command)
     for window in result['result_list']:
         command[2] =  window['windowId']
         execute_subprocess(command)
@@ -214,7 +192,6 @@ def mvseparate_token_execute(result):
 def close_token_execute(result):
     command = ['wmctrl', '-ic', 'windowId']
     for window in result['result_list']:
-        print(window)
         command[2] = window['windowId']
         execute_subprocess(command)
     return result
@@ -227,13 +204,17 @@ def switch_token_execute(id):
     reg = r"[0-9]{1,3}"
     if (re.fullmatch(reg,id) is None):
         raise WrongQueryParameterException("Not valid desktop id %s in `SWITCH`"%id)
-    command = ['wmctrl', id]
+    command = ['wmctrl', '-s' ,id]
     execute_subprocess(command)
 
-def active_token_execute(id):
-    if (not is_window_id_valid(id)):
-        raise WrongQueryParameterException("Not valid window id %s in `ACTIVE`"%id)
-    command = ['wmctrl', '-ia', id]
+def active_token_execute(result):
+    target = result['result_list']
+    if len(target) != 1:
+        raise ExecuteQueryException("Can't set active for %s windows, only single target..."%str(len(result['result_list'])))
+    target = target[0]
+    if (not is_window_id_valid(target['windowId'])):
+        raise WrongQueryParameterException("Not valid window id %s for `ACTIVE`"%target['windowId'])
+    command = ['wmctrl', '-ia', target['windowId']]
     execute_subprocess(command)
 
 EXECUTOR_FUNCS = {
@@ -268,7 +249,6 @@ class QueryExecutor:
                 iterator = range(0, len(self.tokens)).__iter__()
                 for i in iterator:
                     token = self.tokens[i]
-                    print("Process %s"%token)
                     if (TokensType.is_executable(token)):
                         tokenType = TokensType.get(token)
                         executor = EXECUTOR_FUNCS[tokenType]
@@ -280,11 +260,9 @@ class QueryExecutor:
                             except IndexError:
                                 raise WrongQueryParameterException("%s token require value..."%token)
                         self.result = executor(self.result)
-                    print("After execute %s now result look like"%token)
-                    print(self.result)
            
         except KeyError: 
-            raise ExecuteTaskException("Can't execute query %s, there is no implementation of one of the tokens"%self.query)
+            raise ExecuteQueryException("Can't execute query %s, there is no implementation of one of the tokens"%self.query)
 
     def is_valid_value(self, token, value):
         if not TokensType.is_value_token(value):
@@ -294,8 +272,6 @@ class QueryExecutor:
         if (len(self.tokens) != 2):
             raise WrongQueryParameterException("Unary operator requires only value and nothing more")
         executor = EXECUTOR_FUNCS[tokenType]
-        print("AAAAAAAAAAAAAAAAAAA")
-        print(self.tokens[1])
         executor(self.tokens[1])
     
 class TokenParser:
@@ -305,6 +281,8 @@ class TokenParser:
         self.tokens = self.tokens_list()
         self.simplified_tokens = self.simplify_tokens()
         self.query_executor = QueryExecutor(self.simplified_tokens, self.expression)
+
+    def run(self):
         self.query_executor.execute()
 
     def simplify_tokens(self):
@@ -339,9 +317,9 @@ class TokenParser:
 
     def is_token_with_value(self, token):
         # closing ? from {1}
-        reg = r"(?P<token>[\S]+)\(\W?(?P<tokenValue>[\w\s\S]+)\W?\)"
+        #reg = r"(?P<token>[\S]+)\(\W?(?P<tokenValue>[\w\s\S]+)\W?\)"
+        reg = r"(?P<token>[\S]+)\((?P<tokenValue>[\w\s\S]+)\)"
         result = re.search(reg,token)
-
         if result is None:
             raise ParseTokenException("Bad token: %s"%(token))
         return [ result['token'], result['tokenValue'] ]
@@ -389,22 +367,90 @@ if (not wmctrl_status()):
     PrintUtil.log_error("Seems, like `wmctrl` is not installed...")
     exit(1)
 
+epilog_msg = '''
+Unary operators:
+    Query: SWITCH(desktopId)
+        SWITCH : 
+            Switch active desktop
+                <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+
+Binary opeators:
+    Grab opened windows and process results.
+        | - one of token
+        [...] - optional token
+        -> - operator, which split data selecting and processing parts
+        (...) - required parameter
+    Query: ALL|SINGLE [BY ID|REGEX|CONTAINS|FULL (pattern)] -> CLOSE|MV_TO(desktopId)|MV_SEPARATE(interval|*)|ACTIVE
+        Selectors:
+            ALL:
+                Select all opened windows
+            SINGLE:
+                Select FIRST opened window
+        Filters:
+            BY ID:
+                Match window with selected id
+                Example: BY ID(0xFFFFFFFF)
+            BY REGEX:
+                Match window by python regex string
+                Example: BY REGEX(\s+Test\s+)
+            BY CONTAINS:
+                Match window if title contains string:
+                Example: BY CONTAINS(Music)
+            BY FULL:
+                Match window if title match string:
+                Example: BY FULL(Desktop)
+        Processors:
+            CLOSE:
+                Close windows
+            MV_TO:
+                Move selected windows to desktop
+                    <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+            MV_SEPARATE:
+                Split selected windows between desktops
+                When you create dekstops range, make sure the number of windows matches the range
+                Remember desktop count starting with 0
+                    <*> - foreach window new dekstop (it's mean, if you select 3 windows, each window would have own desktop)
+                    <interval> - specify range of target desktops
+                         Available intervals syntax:
+                            |1|1-       - FROM
+                            -3          - TO
+                            1-3         - RANGE
+                            1,3,5       - SEQUENCE
+
+Queries examples:  
+    Get all 'Firefox' instance and move them to third desktop:
+        ALL BY CONTAINS(Firefox) -> MV_TO(3)
+    Place all windows of 'Visual Code' one by one on the desktops:
+        ALL BY CONTAINS(Visual Code) -> MV_SEPARATE(*)
+    Switch to second desktop:
+        SWITCH(2)
+    Close window, with name 'Music':
+        SINGLE BY FULL(Music) -> CLOSE
+    Make active window, which title match a regex:
+        SINGLE BY REGEX(\s+Pict\s+) -> ACTIVE
+    Move all 'Chrome' windows (3) to 1-3 desktop:
+        ALL BY CONTAINS (Chrome) -> MV_SEPARATE(1-3)
+
+'''
+
+def get_params():
+    parser = argparse.ArgumentParser(description="Automatize your desktop management", epilog=epilog_msg, formatter_class=RawTextHelpFormatter)
+    args = parser.parse_args()
+    return args
+
+options = get_params()
+
 #query = "ALL BY CONTAINS ('Studio Code') -> MV_TO(4)"
-query = "SINGLE BY CONTAINS ('Firefox') -> ACTIVE"
-parser = TokenParser(query)
+#query = "SINGLE BY CONTAINS ('Firefox') -> ACTIVE"
+#query = "SWITCH (1)"
+#query = "ALL BY CONTAINS(Firefox) -> MV_SEPARATE(*)"
+#parser = TokenParser(query)
 
 def main():
     pass
 
 
-
 '''
-
-
-OPTIONAL OPERATIONS:
-RESIZE(...,mvarg)|STATE(...,starg)|RENAME(...,name)
+RESIZE(mvarg)|STATE(starg)|RENAME(name)
 VIEWPORT(x,y)
-
-
-
 '''

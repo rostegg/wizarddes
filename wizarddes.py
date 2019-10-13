@@ -253,6 +253,7 @@ def close_token_execute(result):
     for window in result['result_list']:
         command[2] = window['windowId']
         execute_subprocess(command)
+        wait()
     return result
 
 def check_filter_results(result_list):

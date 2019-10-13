@@ -491,7 +491,6 @@ options = get_params()
 
 def execute_single_query(query):
     PrintUtil.log_info("Execute single query: %s"%query)
-    # parse exceptions
     tokenizer = TokenParser(query)
     tokenizer.execute()
 

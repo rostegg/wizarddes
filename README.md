@@ -51,12 +51,14 @@ Execute `wizzardes --help` to check if it installed right
 Before usage check [usage](#usage) section
 
 ## Usage
-Before usage you can create `/etc/rules.txt` [file](https://github.com/rostegg/wizarddes/blob/master/rules.txt), which would contains rules, executable by default:  
+Before usage you can create `/etc/rules.txt` [file](https://github.com/rostegg/wizarddes/blob/master/rules.txt), which would contains rules, executable by default, if don't specified any of options parameters:  
 
 ```
 $ echo "ALL BY FULL(Music) -> CLOSE" >> rules.txt
 $ sudo cp rules.txt /etc/rules.txt
+$ wizarddes # will execute /etc/rules.txt commands
 ```
+Queries in files must be separated by newline  
 
 If you don't provide default rules file or no specified one of the option, then, you know, it will not work  
 

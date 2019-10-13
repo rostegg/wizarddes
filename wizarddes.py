@@ -26,6 +26,33 @@ class EmptyQueryResult(Exception):
 def wait():
     sleep(0.03)
 
+class PrintUtil:
+    class Colors:
+        HEADER = '\033[95m'
+        OKBLUE = '\033[94m'
+        OKGREEN = '\033[92m'
+        WARNING = '\033[93m'
+        FAIL = '\033[91m'
+        ENDC = '\033[0m'
+        BOLD = '\033[1m'
+        UNDERLINE = '\033[4m'
+    
+    @staticmethod
+    def log_error(msg):
+        print("%s[!] %s%s"%(PrintUtil.Colors.FAIL, msg, PrintUtil.Colors.ENDC))
+    
+    @staticmethod
+    def log_warn(msg):
+        print("%s[!] %s%s"%(PrintUtil.Colors.WARNING, msg, PrintUtil.Colors.ENDC))
+
+    @staticmethod
+    def log_info(msg):
+        print("%s[-] %s%s"%(PrintUtil.Colors.OKBLUE, msg, PrintUtil.Colors.ENDC))
+
+    @staticmethod
+    def log_success(msg):
+        print("%s[+] %s%s"%(PrintUtil.Colors.OKGREEN, msg, PrintUtil.Colors.ENDC))
+
 class TokensType:
     ALL, SINGLE, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK = range(13)
 
@@ -89,9 +116,14 @@ def get_desktop_list():
     output_str = execute_subprocess(['wmctrl', '-d'])
     regex_desktop_list = re.compile(r'(?P<desktopId>[0-9]{1,3})\s+(?P<active>[-*]{1})\s+DG:\s+(?P<geometry>[0-9]{1,4}x[0-9]{1,4})\s+VP:\s+(?P<viewPort>N/A|(?:[0-9]{1,5}\,[0-9]{1,5}))\s+WA:\s+(?P<workAreaGeometry>[0-9]{1,5}\,[0-9]{1,5})\s+(?P<workAreaResolution>[0-9]{1,4}x[0-9]{1,4})\s+(?P<title>[\s\w/]+)\n')
     return dict_from_regex(output_str, regex_desktop_list)
-    
-windows_list = get_windows_list()
-desktop_list = get_desktop_list()
+
+try:
+    windows_list = get_windows_list()
+    desktop_list = get_desktop_list()
+except WmctrlExeption as ex:
+    PrintUtil.log_error("Error occuring, whil executing `wmctrl`:")
+    PrintUtil.log_error(str(ex))
+    exit(1)
 
 def filter_all(arr):
     return arr
@@ -305,13 +337,23 @@ class QueryExecutor:
 class TokenParser:
 
     def __init__(self, expression):
-        self.expression = expression
-        self.tokens = self.tokens_list()
-        self.simplified_tokens = self.simplify_tokens()
-        self.query_executor = QueryExecutor(self.simplified_tokens, self.expression)
+        try:
+            self.expression = expression
+            self.tokens = self.tokens_list()
+            self.simplified_tokens = self.simplify_tokens()
+            self.query_executor = QueryExecutor(self.simplified_tokens, self.expression)
+        except (ParseTokenException, WrongQueryParameterException, WmctrlExeption, EmptyQueryResult) as ex:
+            PrintUtil.log_error("Error occuring, while parsing tokens for `%s`:"%expression)
+            PrintUtil.log_error(str(ex))
+            PrintUtil("Skiping `%s` query..."%expression)
 
     def execute(self):
-        self.query_executor.execute()
+        try:
+            self.query_executor.execute()
+        except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult) as ex:
+            PrintUtil.log_error("Error occuring, while executing `%s`:"%self.expression)
+            PrintUtil.log_error(str(ex))
+            PrintUtil("Skiping `%s` query..."%self.expression)
 
     def simplify_tokens(self):
         tokens_list = list()
@@ -353,34 +395,6 @@ class TokenParser:
         return [ result['token'], result['tokenValue'] ]
 
 # main script
-
-class PrintUtil:
-    class Colors:
-        HEADER = '\033[95m'
-        OKBLUE = '\033[94m'
-        OKGREEN = '\033[92m'
-        WARNING = '\033[93m'
-        FAIL = '\033[91m'
-        ENDC = '\033[0m'
-        BOLD = '\033[1m'
-        UNDERLINE = '\033[4m'
-    
-    @staticmethod
-    def log_error(msg):
-        print("%s[!] %s%s"%(PrintUtil.Colors.FAIL, msg, PrintUtil.Colors.ENDC))
-    
-    @staticmethod
-    def log_warn(msg):
-        print("%s[!] %s%s"%(PrintUtil.Colors.WARNING, msg, PrintUtil.Colors.ENDC))
-
-    @staticmethod
-    def log_info(msg):
-        print("%s[-] %s%s"%(PrintUtil.Colors.OKBLUE, msg, PrintUtil.Colors.ENDC))
-
-    @staticmethod
-    def log_success(msg):
-        print("%s[+] %s%s"%(PrintUtil.Colors.OKGREEN, msg, PrintUtil.Colors.ENDC))
-
 
 def wmctrl_status():
     try:
@@ -488,15 +502,26 @@ def execute_single_query(query):
     tokenizer.execute()
 
 def parse_query_file(file_path):
-    return []
+    return open(file_path).read().splitlines()
 
 def execute_custom_query_file(file_path):
-    pass
+    try:
+        queries = parse_query_file(file_path)
+        for query in queries:
+            execute_single_query(query)
+    except FileNotFoundError:
+        PrintUtil.log_error("Can't read %s query file, check if it exist or have righ permissions")
+        exit(1)
 
 def execute_default_query_file():
-    default_path = "/etc/rules.txt"
-    queries = parse_query_file(default_path)
-    pass
+    try:
+        default_path = "/etc/rules.txt"
+        queries = parse_query_file(default_path)
+        for query in queries:
+            execute_single_query(query)
+    except FileNotFoundError:
+        PrintUtil.log_error("Can't read %s query file, check if it exist or have righ permissions")
+        exit(1)
 
 def main():
     if (options.single_query is not None):
@@ -511,8 +536,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-'''
-TODO 
-RESIZE(mvarg)|STATE(starg)|RENAME(name)
-VIEWPORT(x,y)
-'''

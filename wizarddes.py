@@ -203,8 +203,6 @@ class DesktopManager:
     
     def distributeWindows(self, targets_list, interval):
         interval_arr = [ i for i in range(0, len(targets_list))] if interval is TokensType.AVAILABLE_INTERVAL_TOKEN else self.__parse_interval(interval, len(targets_list))
-        PrintUtil.log_info(interval)
-        PrintUtil.log_info(interval_arr)
         self.distributeWindowsByRange(targets_list, interval_arr)
 
     def distributeWindowsByRange(self, targets_list, ids_list):
@@ -212,7 +210,6 @@ class DesktopManager:
         for index, desktop_id in enumerate(ids_list):
             command[2] = targets_list[index]['windowId']
             command[4] = str(desktop_id)
-            PrintUtil.log_warn(" ".join(command))
             execute_subprocess(command)
             wait()
 
@@ -485,10 +482,6 @@ def get_params():
                     action="store")
     parser.add_argument("--query-file", help="Path to query file",
                     action="store")
-    import sys
-    if len(sys.argv[1:])==0:
-        parser.print_help()
-        exit(0)
 
     options = parser.parse_args()
     return options
@@ -528,12 +521,12 @@ def main():
     if (options.single_query is not None):
         execute_single_query(options.single_query)
         exit(0)
-    else:
-        if (options.query_file):
-            execute_custom_query_file(options.query_file)
-            exit(0)
-        else:
-            execute_default_query_file()
+
+    if (options.query_file):
+        execute_custom_query_file(options.query_file)
+        exit(0)
+    
+    execute_default_query_file()
 
 if __name__ == "__main__":
     main()

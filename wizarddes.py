@@ -5,6 +5,7 @@ from __future__ import print_function
 from subprocess import Popen, PIPE
 import re, os, argparse
 from argparse import RawTextHelpFormatter
+from time import sleep
 
 class ParseTokenException(Exception):
     pass
@@ -21,19 +22,23 @@ class WmctrlExeption(Exception):
 class EmptyQueryResult(Exception):
     pass
 
+# well, wmctrl sometimes don't execute immediatly tasks range, so we need give it a little bit of time...
+def wait():
+    sleep(0.03)
+
 class TokensType:
-    ALL, SINGLE, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE = range(12)
+    ALL, SINGLE, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK = range(13)
 
     UNARY_OPERATORS = [SWITCH]
     BINARY_OPERATORS = [ALL, SINGLE]
 
-    EXECUTABLE = [ALL, SINGLE, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH] 
+    EXECUTABLE = [ALL, SINGLE, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK] 
 
     BINARY_OPERATOR = '->' 
 
     AVAILABLE_INTERVAL_TOKEN = '*'
 
-    TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE]
+    TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK]
 
     @staticmethod
     def get(tokenName):
@@ -95,6 +100,13 @@ def is_window_id_valid(id):
     reg = r"0x[0-9A-Fa-f]{8}"
     return False if re.fullmatch(reg,id) is None else True
 
+def is_desktop_is_valid(id):
+    try:
+        reg = r"[0-9]{1,5}"
+        return False if re.fullmatch(reg,id) is None else int(id) < len(desktop_list)
+    except ValueError:
+        raise WrongQueryParameterException("Can't convert %s to integer..."%id)
+
 def all_token_execute(result):
     result['return_processor'] = filter_all
     result['result_list'] = filter_all(windows_list)
@@ -110,15 +122,26 @@ def single_token_execute(result):
 
 def id_token_execute(result):
     if (not is_window_id_valid(result['value'])): 
-        raise WrongQueryParameterException("Not valid window id %s in `BY ID() filter`"%id)
+        raise WrongQueryParameterException("Not valid window id `%s` in `BY ID() filter`"%result['value'])
 
     result_list = [window for window in windows_list if result['value'] == window['windowId'] ]
     check_filter_results(result_list)
+    result_list = result['return_processor'](result_list)
     result['result_list'] = result_list
     return result
 
 def contains_token_execute(result):
     result_list = [window for window in windows_list if result['value'] in window['windowTitle'] ]
+    check_filter_results(result_list)
+    result_list = result['return_processor'](result_list)
+    result['result_list'] = result_list
+    return result
+
+def desk_token_execute(result):
+    if (not is_desktop_is_valid(result['value'])):
+        raise WrongQueryParameterException("Not valid desktop id `%s` in `BY DESK() filter`"%result['value'])
+    
+    result_list = [window for window in windows_list if result['value'] == window['desktopId'] ]
     check_filter_results(result_list)
     result_list = result['return_processor'](result_list)
     result['result_list'] = result_list
@@ -147,8 +170,9 @@ class DesktopManager:
         self.desktop_list = desktop_list
     
     def distributeWindows(self, targets_list, interval):
-
-        interval_arr =[ i for i in range(0, len(targets_list))] if interval is TokensType.AVAILABLE_INTERVAL_TOKEN else self.__parse_interval(interval, len(targets_list))
+        interval_arr = [ i for i in range(0, len(targets_list))] if interval is TokensType.AVAILABLE_INTERVAL_TOKEN else self.__parse_interval(interval, len(targets_list))
+        PrintUtil.log_info(interval)
+        PrintUtil.log_info(interval_arr)
         self.distributeWindowsByRange(targets_list, interval_arr)
 
     def distributeWindowsByRange(self, targets_list, ids_list):
@@ -156,7 +180,9 @@ class DesktopManager:
         for index, desktop_id in enumerate(ids_list):
             command[2] = targets_list[index]['windowId']
             command[4] = str(desktop_id)
+            PrintUtil.log_warn(" ".join(command))
             execute_subprocess(command)
+            wait()
 
     '''
         Available intervals syntax:
@@ -183,6 +209,7 @@ def mvto_token_execute(result):
     for window in result['result_list']:
         command[2] =  window['windowId']
         execute_subprocess(command)
+        wait()
     return result
 
 def mvseparate_token_execute(result):
@@ -228,7 +255,8 @@ EXECUTOR_FUNCS = {
     TokensType.ACTIVE: active_token_execute,
     TokensType.MV_SEPARATE: mvseparate_token_execute,
     TokensType.MV_TO: mvto_token_execute,
-    TokensType.CLOSE: close_token_execute
+    TokensType.CLOSE: close_token_execute,
+    TokensType.DESK: desk_token_execute
 }
 
 class QueryExecutor:
@@ -380,7 +408,7 @@ Binary opeators:
         [...] - optional token
         -> - operator, which split data selecting and processing parts
         (...) - required parameter
-    Query: ALL|SINGLE [BY ID|REGEX|CONTAINS|FULL (pattern)] -> CLOSE|MV_TO(desktopId)|MV_SEPARATE(interval|*)|ACTIVE
+    Query: ALL|SINGLE [BY ID|REGEX|CONTAINS|FULL|DESK (pattern)] -> CLOSE|MV_TO(desktopId)|MV_SEPARATE(interval|*)|ACTIVE
         Selectors:
             ALL:
                 Select all opened windows
@@ -399,6 +427,9 @@ Binary opeators:
             BY FULL:
                 Match window if title match string:
                 Example: BY FULL(Desktop)
+            BY DESK:
+                Match window in selected dekstop:
+                Example: BY DESK(2)
         Processors:
             CLOSE:
                 Close windows
@@ -451,6 +482,7 @@ def get_params():
 options = get_params()
 
 def execute_single_query(query):
+    PrintUtil.log_info("Execute single query: %s"%query)
     # parse exceptions
     tokenizer = TokenParser(query)
     tokenizer.execute()

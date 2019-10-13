@@ -1,4 +1,4 @@
 #!/bin/bash
 
-chmod +x wizzarddes.py
-sudo cp wizzarddes.py /usr/bin/wizzarddes
+chmod +x wizarddes.py
+sudo cp wizarddes.py /usr/bin/wizarddes

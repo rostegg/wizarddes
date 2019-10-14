@@ -299,7 +299,7 @@ EXECUTOR_FUNCS = {
     TokensType.MV_TO: mvto_token_execute,
     TokensType.CLOSE: close_token_execute,
     TokensType.DESK: desk_token_execute,
-    TokensType.
+    TokensType.CLOSE_ALL: close_all_token_execute
 }
 
 class QueryExecutor:

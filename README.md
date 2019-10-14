@@ -165,3 +165,6 @@ Binary opeators:
 * Get all windows at second desktop and close them:  
     `ALL BY DESK(1) -> CLOSE`  
     
+* Close all windows at current desktop:  
+    `CLOSE_ALL(*)`  
+

@@ -54,16 +54,16 @@ class PrintUtil:
         print("%s[+] %s%s"%(PrintUtil.Colors.OKGREEN, msg, PrintUtil.Colors.ENDC))
 
 class TokensType:
-    ALL, SINGLE, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK = range(13)
+    ALL, SINGLE, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CLOSE_ALL = range(14)
 
     UNARY_OPERATORS = [SWITCH]
     BINARY_OPERATORS = [ALL, SINGLE]
 
-    EXECUTABLE = [ALL, SINGLE, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK] 
+    EXECUTABLE = [ALL, SINGLE, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CLOSE_ALL] 
 
     BINARY_OPERATOR = '->' 
 
-    AVAILABLE_INTERVAL_TOKEN = '*'
+    DEFAULT_SCENARIO_TOKEN = '*'
 
     TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK]
 
@@ -202,7 +202,7 @@ class DesktopManager:
         self.desktop_list = desktop_list
     
     def distributeWindows(self, targets_list, interval):
-        interval_arr = [ i for i in range(0, len(targets_list))] if interval is TokensType.AVAILABLE_INTERVAL_TOKEN else self.__parse_interval(interval, len(targets_list))
+        interval_arr = [ i for i in range(0, len(targets_list))] if interval is TokensType.DEFAULT_SCENARIO_TOKEN else self.__parse_interval(interval, len(targets_list))
         self.distributeWindowsByRange(targets_list, interval_arr)
 
     def distributeWindowsByRange(self, targets_list, ids_list):
@@ -257,12 +257,24 @@ def check_filter_results(result_list):
     if len(result_list) == 0:
         raise EmptyQueryResult("Zero result finded for query..")
 
-def switch_token_execute(id):
+def switch_token_execute(desktop_id):
+    reg = r"[0-9]{1,3}"
+    if (re.fullmatch(reg,desktop_id) is None):
+        raise WrongQueryParameterException("Not valid desktop id %s in `SWITCH`"%desktop_id)
+    command = ['wmctrl', '-s' ,desktop_id]
+    execute_subprocess(command)
+
+def close_all_token_execute(desktop_id):
     reg = r"[0-9]{1,3}"
     if (re.fullmatch(reg,id) is None):
-        raise WrongQueryParameterException("Not valid desktop id %s in `SWITCH`"%id)
-    command = ['wmctrl', '-s' ,id]
-    execute_subprocess(command)
+        raise WrongQueryParameterException("Not valid desktop id %s in `CLOSE_ALL`"%desktop_id)
+    if (desktop_id is TokensType.DEFAULT_SCENARIO_TOKEN):
+        desktop_id = next(desktop['desktopId'] for desktop in desktop_list if desktop['active'] is '*')
+    target_list = [window['windowId'] for window in windows_list if window['desktopId'] == desktop_id]
+    for target_id in target_list:
+        command = ['wmctrl', '-ic', 'windowId']
+        execute_subprocess(command)
+        wait()
 
 def active_token_execute(result):
     target = result['result_list']
@@ -286,7 +298,8 @@ EXECUTOR_FUNCS = {
     TokensType.MV_SEPARATE: mvseparate_token_execute,
     TokensType.MV_TO: mvto_token_execute,
     TokensType.CLOSE: close_token_execute,
-    TokensType.DESK: desk_token_execute
+    TokensType.DESK: desk_token_execute,
+    TokensType.
 }
 
 class QueryExecutor:

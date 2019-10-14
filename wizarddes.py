@@ -272,7 +272,7 @@ def close_all_token_execute(desktop_id):
         desktop_id = next(desktop['desktopId'] for desktop in desktop_list if desktop['active'] is '*')
     target_list = [window['windowId'] for window in windows_list if window['desktopId'] == desktop_id]
     for target_id in target_list:
-        command = ['wmctrl', '-ic', 'windowId']
+        command = ['wmctrl', '-ic', target_id]
         execute_subprocess(command)
         wait()
 

@@ -87,10 +87,14 @@ How create queries and available command check [query language](#query-language)
 
 ```
 Unary operators:
-    Query: SWITCH(desktopId)
+    Query: SWITCH(desktopId)|CLOSE_ALL(desktopId|*)
         SWITCH : 
             Switch active desktop
                 <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+        CLOSE_ALL:
+            Close all windows on target desktop
+                <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+                * - current desktop id
 
 Binary opeators:
     Grab opened windows and process results.

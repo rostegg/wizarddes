@@ -56,7 +56,7 @@ class PrintUtil:
 class TokensType:
     ALL, SINGLE, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CLOSE_ALL = range(14)
 
-    UNARY_OPERATORS = [SWITCH]
+    UNARY_OPERATORS = [SWITCH, CLOSE_ALL]
     BINARY_OPERATORS = [ALL, SINGLE]
 
     EXECUTABLE = [ALL, SINGLE, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CLOSE_ALL] 
@@ -265,11 +265,12 @@ def switch_token_execute(desktop_id):
     execute_subprocess(command)
 
 def close_all_token_execute(desktop_id):
-    reg = r"[0-9]{1,3}"
-    if (re.fullmatch(reg,id) is None):
-        raise WrongQueryParameterException("Not valid desktop id %s in `CLOSE_ALL`"%desktop_id)
     if (desktop_id is TokensType.DEFAULT_SCENARIO_TOKEN):
         desktop_id = next(desktop['desktopId'] for desktop in desktop_list if desktop['active'] is '*')
+    else:
+        reg = r"[0-9]{1,3}"
+        if (re.fullmatch(reg,id) is None):
+            raise WrongQueryParameterException("Not valid desktop id %s in `CLOSE_ALL`"%desktop_id)
     target_list = [window['windowId'] for window in windows_list if window['desktopId'] == desktop_id]
     for target_id in target_list:
         command = ['wmctrl', '-ic', target_id]
@@ -364,7 +365,7 @@ class TokenParser:
         except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult) as ex:
             PrintUtil.log_error("Error occuring, while executing `%s`:"%self.expression)
             PrintUtil.log_error(str(ex))
-            PrintUtil("Skiping `%s` query..."%self.expression)
+            PrintUtil.log_error("Skiping `%s` query..."%self.expression)
 
     def simplify_tokens(self):
         tokens_list = list()
@@ -422,10 +423,14 @@ if (not wmctrl_status()):
 
 epilog_msg = '''
 Unary operators:
-    Query: SWITCH(desktopId)
-        SWITCH : 
+    Query: SWITCH(desktopId)|CLOSE_ALL(desktopId|*)
+        SWITCH: 
             Switch active desktop
                 <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+        CLOSE_ALL:
+            Close all windows on target desktop
+                <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+                * - current desktop id
 
 Binary opeators:
     Grab opened windows and process results.

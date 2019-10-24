@@ -26,6 +26,8 @@ class EmptyQueryResult(Exception):
 def wait():
     sleep(0.03)
 
+local_storage_path = '/etc/wizzardes'
+
 class PrintUtil:
     class Colors:
         HEADER = '\033[95m'
@@ -54,28 +56,29 @@ class PrintUtil:
         print("%s[+] %s%s"%(PrintUtil.Colors.OKGREEN, msg, PrintUtil.Colors.ENDC))
 
 class TokensType:
-    ALL, SINGLE, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CLOSE_ALL = range(14)
-
-    UNARY_OPERATORS = [SWITCH, CLOSE_ALL]
-    BINARY_OPERATORS = [ALL, SINGLE]
-
-    EXECUTABLE = [ALL, SINGLE, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CLOSE_ALL] 
-
-    BINARY_OPERATOR = '->' 
-
+    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE = range(15)
+    CONVERSION_OPERATOR = '->' 
     DEFAULT_SCENARIO_TOKEN = '*'
 
-    TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK]
+    UNARY_OPERATORS = [SWITCH]
+
+    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE] 
+    RANGE_FILTERS = [ALL, FIRST, LAST]
+    DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
+
+    TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK, CREATE]
 
     @staticmethod
     def get(tokenName):
         try:
             return getattr(TokensType, tokenName)
         except AttributeError:
+            if tokenName == TokensType.CONVERSION_OPERATOR:
+                return TokensType.CONVERSION_OPERATOR
             return None
 
     @staticmethod
-    def contain_value(tokenName):
+    def contains_value(tokenName):
         tokenType = TokensType.get(tokenName)
         return tokenType in TokensType.TOKENS_WITH_VALUES
 
@@ -92,7 +95,7 @@ class TokensType:
     @staticmethod
     def is_value_token(tokenName):
         tokenType = TokensType.get(tokenName)
-        return tokenName != TokensType.BINARY_OPERATOR and tokenType == None
+        return tokenName != TokensType.CONVERSION_OPERATOR and tokenType == None
 
 def execute_subprocess(task):
     p = Popen(task, stdin=PIPE, stdout=PIPE, stderr=PIPE)
@@ -102,99 +105,167 @@ def execute_subprocess(task):
         raise WmctrlExeption("Can't execute `wmctrl`, exit code: `1`, error: %s"%str(err))
     return output.decode("utf-8")
 
-def dict_from_regex(target, reg):
-    return [m.groupdict() for m in reg.finditer(target)]
+class Utils:
+    @staticmethod
+    def dict_from_regex(target, reg):
+        return [m.groupdict() for m in reg.finditer(target)]
 
-# <windowId> <desktopId> <client> <windowTitle>
-def get_windows_list():
-    output_str = execute_subprocess(['wmctrl', '-l'])
-    regex_window_list = re.compile(r'(?P<windowId>0x[0-9A-Fa-f]{8})\s+(?P<desktopId>[0-9]{0,5})\s+(?P<client>[A-Za-z0-9]+)\s+(?P<windowTitle>.+)\n')
-    return dict_from_regex(output_str, regex_window_list)
+class WmctrlUtils:
+    # <windowId> <desktopId> <client> <windowTitle>
+    def get_windows_list(self):
+        output_str = execute_subprocess(['wmctrl', '-lp'])
+        regex_window_list = re.compile(r'(?P<windowId>0x[0-9A-Fa-f]{8})\s+(?P<desktopId>[0-9]+)\s+(?P<pid>[0-9]+)\s+(?P<client>[A-Za-z0-9]+)\s+(?P<windowTitle>.+)\n')
+        return Utils.dict_from_regex(output_str, regex_window_list)
 
-# <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
-def get_desktop_list():
-    output_str = execute_subprocess(['wmctrl', '-d'])
-    regex_desktop_list = re.compile(r'(?P<desktopId>[0-9]{1,3})\s+(?P<active>[-*]{1})\s+DG:\s+(?P<geometry>[0-9]{1,4}x[0-9]{1,4})\s+VP:\s+(?P<viewPort>N/A|(?:[0-9]{1,5}\,[0-9]{1,5}))\s+WA:\s+(?P<workAreaGeometry>[0-9]{1,5}\,[0-9]{1,5})\s+(?P<workAreaResolution>[0-9]{1,4}x[0-9]{1,4})\s+(?P<title>[\s\w/]+)\n')
-    return dict_from_regex(output_str, regex_desktop_list)
+    # <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
+    def get_desktop_list(self):
+        output_str = execute_subprocess(['wmctrl', '-d'])
+        regex_desktop_list = re.compile(r'(?P<desktopId>[0-9]+)\s+(?P<active>[-*]{1})\s+DG:\s+(?P<geometry>[0-9]{1,5}x[0-9]{1,5})\s+VP:\s+(?P<viewPort>N/A|(?:[0-9]{1,5}\,[0-9]{1,5}))\s+WA:\s+(?P<workAreaGeometry>[0-9]{1,5}\,[0-9]{1,5})\s+(?P<workAreaResolution>[0-9]{1,5}x[0-9]{1,5})\s+(?P<title>[\s\w/]+)\n')
+        return Utils.dict_from_regex(output_str, regex_desktop_list)
 
-try:
-    windows_list = get_windows_list()
-    desktop_list = get_desktop_list()
-except WmctrlExeption as ex:
-    PrintUtil.log_error("Error occuring, whil executing `wmctrl`:")
-    PrintUtil.log_error(str(ex))
-    exit(1)
+wmctrl_utils = WmctrlUtils()
 
-def filter_all(arr):
-    return arr
+class RangeFilters:
+    filter_all = lambda arr: arr
+    filter_first = lambda arr : [ arr[0] ]
+    filter_last = lambda arr : [ arr[len(arr) - 1] ]
 
-def is_window_id_valid(id):
-    reg = r"0x[0-9A-Fa-f]{8}"
-    return False if re.fullmatch(reg,id) is None else True
+class DataFilters:
+    filter_by_id = lambda windows_list, filter_value: [ window for window in windows_list if filter_value == window['windowId'] ]
+    filter_by_contains = lambda windows_list, filter_value: [ window for window in windows_list if filter_value in window['windowTitle'] ]
+    filter_by_regex = lambda windows_list, filter_value: [ window for window in windows_list if re.match(filter_value, window['windowTitle']) ] 
+    filter_by_full = lambda windows_list, filter_value: [ window for window in windows_list if filter_value ==  window['windowTitle'] ]
+    filter_by_desk =lambda windows_list, filter_value: lambda windows_list, filter_value: [ window for window in windows_list if filter_value == window['desktopId'] ]
 
-def is_desktop_is_valid(id):
-    try:
-        reg = r"[0-9]{1,5}"
-        return False if re.fullmatch(reg,id) is None else int(id) < len(desktop_list)
-    except ValueError:
-        raise WrongQueryParameterException("Can't convert %s to integer..."%id)
+class FilterObject:
+    def __init__(self, filter_func, filter_value):
+        self.filter_func = filter_func
+        self.filter_value = filter_value
 
-def all_token_execute(result):
-    result['return_processor'] = filter_all
-    result['result_list'] = filter_all(windows_list)
-    return result
+    def filter(self, target_list):
+        result = self.filter_func(target_list, self.filter_value)
+        if len(result) == 0:
+            raise EmptyQueryResult("Zero result finded for query..") 
+        return result
 
-def filter_first(arr):
-    return [ arr[0] ]
-
-def single_token_execute(result):
-    result['return_processor'] = filter_first
-    result['result_list'] = filter_first(windows_list)
-    return result
-
-def id_token_execute(result):
-    if (not is_window_id_valid(result['value'])): 
-        raise WrongQueryParameterException("Not valid window id `%s` in `BY ID() filter`"%result['value'])
-
-    result_list = [window for window in windows_list if result['value'] == window['windowId'] ]
-    check_filter_results(result_list)
-    result_list = result['return_processor'](result_list)
-    result['result_list'] = result_list
-    return result
-
-def contains_token_execute(result):
-    result_list = [window for window in windows_list if result['value'] in window['windowTitle'] ]
-    check_filter_results(result_list)
-    result_list = result['return_processor'](result_list)
-    result['result_list'] = result_list
-    return result
-
-def desk_token_execute(result):
-    if (not is_desktop_is_valid(result['value'])):
-        raise WrongQueryParameterException("Not valid desktop id `%s` in `BY DESK() filter`"%result['value'])
+class Validators:
+    @staticmethod
+    def is_window_id_valid(id):
+        reg = r"0x[0-9A-Fa-f]{8}"
+        return False if re.fullmatch(reg,id) is None else True
     
-    result_list = [window for window in windows_list if result['value'] == window['desktopId'] ]
-    check_filter_results(result_list)
-    result_list = result['return_processor'](result_list)
-    result['result_list'] = result_list
-    return result
+    @staticmethod
+    def is_desktop_is_valid(id):
+        try:
+            desktop_list = wmctrl_utils.get_desktop_list()
+            reg = r"[0-9]{1,5}"
+            return False if re.fullmatch(reg,id) is None else int(id) < len(desktop_list)
+        except ValueError:
+            raise WrongQueryParameterException("Can't convert %s to integer..."%id)
 
-def full_token_execute(result):
-    result_list = [window for window in windows_list if result['value'] ==  window['windowTitle'] ]
-    check_filter_results(result_list)
-    result_list = result['return_processor'](result_list)
-    result['result_list'] = result_list
-    return result
+def all_token_execute(state):
+    state['range_filter_processor'] = RangeFilters.filter_all
+    return state
 
-def regex_token_execute(result):
-    try:
-        result_list = [window for window in windows_list if re.match(result['value'], window['windowTitle']) ]
-    except re.error:
-        raise WrongQueryParameterException("Invalid regex")
-    check_filter_results(result_list)
-    result_list = result['return_processor'](result_list)
-    result['result_list'] = result_list
-    return result
+def first_token_execute(state):
+    state['range_filter_processor'] = RangeFilters.filter_first
+    return state
+
+def last_token_execute(state):
+    state['range_filter_processor'] = RangeFilters.filter_last
+    return state
+
+def id_token_execute(state):
+    if (not Validators.is_window_id_valid(state['value'])): 
+        raise WrongQueryParameterException("Not valid window id `%s` in `BY ID() filter`"%state['value'])
+    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_id, state['value'])
+    return state
+
+def contains_token_execute(state):
+    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_contains, state['value'])
+    return state
+
+def desk_token_execute(state):
+    if (not Validators.is_desktop_is_valid(state['value'])):
+        raise WrongQueryParameterException("Not valid desktop id `%s` in `BY DESK() filter`"%state['value'])
+    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_desk, state['value'])
+    return state
+
+def full_token_execute(state):
+    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_full, state['value'])
+    return state
+
+def regex_token_execute(state):
+    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_regex, state['value'])
+    return state
+
+def mvto_token_execute(state):
+    command = ['wmctrl', '-ir', 'windowId', '-t', state['value']]
+    for window in state['target_list']:
+        command[2] =  window['windowId']
+        execute_subprocess(command)
+        wait()
+    return state
+
+def mvseparate_token_execute(state):
+    state['desktopManager'].distributeWindows(state['target_list'], state['value'])
+    return state
+
+# here
+def close_token_execute(state):
+    command = ['wmctrl', '-ic', 'windowId']
+    for window in state['target_list']:
+        command[2] = window['windowId']
+        execute_subprocess(command)
+        wait()
+    return state
+
+def switch_token_execute(desktop_id):
+    if (not Validators.is_desktop_is_valid(desktop_id)):
+        raise WrongQueryParameterException(f"Not valid desktop id '{desktop_id}' in `SWITCH`, maybe desktop not yet created")
+    command = ['wmctrl', '-s' ,desktop_id]
+    execute_subprocess(command)
+
+def active_token_execute(state):
+    target = state['target_list']
+    if len(target) != 1:
+        raise ExecuteQueryException(f"Can't set `ACTIVE` for {len(target)} windows, only single target...")
+    target = target['windowId']
+    if (not Validators.is_window_id_valid(target)):
+        raise WrongQueryParameterException(f"Not valid window id {target} for `ACTIVE`")
+    command = ['wmctrl', '-ia', target]
+    execute_subprocess(command)
+
+def conversion_token_execute(state):
+    target_list = state['target_list'] if 'target_list' in state else wmctrl_utils.get_windows_list() 
+    if 'data_filter_processor' in state:
+        target_list = state['data_filter_processor'].filter(target_list)
+    if 'range_filter_processor' in state:
+        target_list = state['range_filter_processor'](target_list)
+    state['target_list'] = target_list
+    return state
+
+def create_token_execute(state):
+    wait()
+    return state
+
+EXECUTOR_FUNCS = {
+    TokensType.ALL : all_token_execute,
+    TokensType.FIRST : first_token_execute,
+    TokensType.LAST : last_token_execute,
+    TokensType.ID : id_token_execute,
+    TokensType.CONTAINS: contains_token_execute,
+    TokensType.FULL: full_token_execute,
+    TokensType.REGEX: regex_token_execute,
+    TokensType.SWITCH: switch_token_execute,
+    TokensType.ACTIVE: active_token_execute,
+    TokensType.MV_SEPARATE: mvseparate_token_execute,
+    TokensType.MV_TO: mvto_token_execute,
+    TokensType.CLOSE: close_token_execute,
+    TokensType.DESK: desk_token_execute,
+    TokensType.CONVERSION_OPERATOR: conversion_token_execute,
+    TokensType.CREATE: create_token_execute
+}
 
 class DesktopManager:
 
@@ -220,7 +291,7 @@ class DesktopManager:
             1-3         - RANGE
             1,3,5       - SEQUENCE
     '''
-    def __parse_interval(self,interval, default_to):
+    def __parse_interval(self, interval, default_to):
         cleared_interval = "".join(interval.split())
         sequnce_regex = r"(?:[0-9]{1,3},){2,}[0-9]{1,3}$"
         primal_regex = re.compile(r"(?P<fromId>[0-9]{1,3})?\-?(?P<toId>[0-9]{1,3})?")
@@ -228,80 +299,10 @@ class DesktopManager:
             return list(map(int, cleared_interval.split(',')))
         else:
             # maybe change primal regex later, to avoide excess data (false positive triggering, beacuse all <?>)
-            interval_dict = dict_from_regex(cleared_interval, primal_regex)
+            interval_dict = Utils.dict_from_regex(cleared_interval, primal_regex)
             from_id = interval_dict[0].fromId if interval_dict[0].fromId is not None else 0
             to_id = interval_dict[0].toId if interval_dict[0].toId is not None else default_to
             return [i for i in range(from_id, to_id)]
-
-def mvto_token_execute(result):
-    command = ['wmctrl', '-ir', 'windowId', '-t', result['value']]
-    for window in result['result_list']:
-        command[2] =  window['windowId']
-        execute_subprocess(command)
-        wait()
-    return result
-
-def mvseparate_token_execute(result):
-    result['desktopManager'].distributeWindows(result['result_list'], result['value'])
-    return result
-
-def close_token_execute(result):
-    command = ['wmctrl', '-ic', 'windowId']
-    for window in result['result_list']:
-        command[2] = window['windowId']
-        execute_subprocess(command)
-        wait()
-    return result
-
-def check_filter_results(result_list):
-    if len(result_list) == 0:
-        raise EmptyQueryResult("Zero result finded for query..")
-
-def switch_token_execute(desktop_id):
-    reg = r"[0-9]{1,3}"
-    if (re.fullmatch(reg,desktop_id) is None):
-        raise WrongQueryParameterException("Not valid desktop id %s in `SWITCH`"%desktop_id)
-    command = ['wmctrl', '-s' ,desktop_id]
-    execute_subprocess(command)
-
-def close_all_token_execute(desktop_id):
-    if (desktop_id is TokensType.DEFAULT_SCENARIO_TOKEN):
-        desktop_id = next(desktop['desktopId'] for desktop in desktop_list if desktop['active'] is '*')
-    else:
-        reg = r"[0-9]{1,3}"
-        if (re.fullmatch(reg,id) is None):
-            raise WrongQueryParameterException("Not valid desktop id %s in `CLOSE_ALL`"%desktop_id)
-    target_list = [window['windowId'] for window in windows_list if window['desktopId'] == desktop_id]
-    for target_id in target_list:
-        command = ['wmctrl', '-ic', target_id]
-        execute_subprocess(command)
-        wait()
-
-def active_token_execute(result):
-    target = result['result_list']
-    if len(target) != 1:
-        raise ExecuteQueryException("Can't set active for %s windows, only single target..."%str(len(result['result_list'])))
-    target = target[0]
-    if (not is_window_id_valid(target['windowId'])):
-        raise WrongQueryParameterException("Not valid window id %s for `ACTIVE`"%target['windowId'])
-    command = ['wmctrl', '-ia', target['windowId']]
-    execute_subprocess(command)
-
-EXECUTOR_FUNCS = {
-    TokensType.ALL : all_token_execute,
-    TokensType.SINGLE : single_token_execute,
-    TokensType.ID : id_token_execute,
-    TokensType.CONTAINS: contains_token_execute,
-    TokensType.FULL: full_token_execute,
-    TokensType.REGEX: regex_token_execute,
-    TokensType.SWITCH: switch_token_execute,
-    TokensType.ACTIVE: active_token_execute,
-    TokensType.MV_SEPARATE: mvseparate_token_execute,
-    TokensType.MV_TO: mvto_token_execute,
-    TokensType.CLOSE: close_token_execute,
-    TokensType.DESK: desk_token_execute,
-    TokensType.CLOSE_ALL: close_all_token_execute
-}
 
 class QueryExecutor:
 
@@ -310,6 +311,7 @@ class QueryExecutor:
     def __init__(self, tokens, query):
         self.query = query
         self.tokens = tokens
+        desktop_list = wmctrl_utils.get_desktop_list()
         self.result['desktopManager'] = DesktopManager(desktop_list)
     
     def execute(self):
@@ -321,10 +323,12 @@ class QueryExecutor:
                 iterator = range(0, len(self.tokens)).__iter__()
                 for i in iterator:
                     token = self.tokens[i]
+                    # add actions for ->
                     if (TokensType.is_executable(token)):
+                        print(f"Execute token {token}")
                         tokenType = TokensType.get(token)
                         executor = EXECUTOR_FUNCS[tokenType]
-                        if (TokensType.contain_value(token)):
+                        if (TokensType.contains_value(token)):
                             try:
                                 self.result['value'] = self.tokens[i+1]
                                 self.is_valid_value(token, self.result['value'])
@@ -332,9 +336,11 @@ class QueryExecutor:
                             except IndexError:
                                 raise WrongQueryParameterException("%s token require value..."%token)
                         self.result = executor(self.result)
-           
+                        print(self.result)
+                        print('-'*30)
+                print(len(self.result['target_list']))
         except KeyError: 
-            raise ExecuteQueryException("Can't execute query %s, there is no implementation of one of the tokens"%self.query)
+            raise ExecuteQueryException("Can't execute query %s, it seems that the query is not composed correctly"%self.query)
 
     def is_valid_value(self, token, value):
         if not TokensType.is_value_token(value):
@@ -373,7 +379,7 @@ class TokenParser:
             # skip empty tokens (like space at the end of line)
             if not token:
                 continue 
-            if token == TokensType.BINARY_OPERATOR:
+            if token == TokensType.CONVERSION_OPERATOR:
                 tokens_list.append(token)
                 continue
             tokenType = TokensType.get(token)
@@ -423,14 +429,10 @@ if (not wmctrl_status()):
 
 epilog_msg = '''
 Unary operators:
-    Query: SWITCH(desktopId)|CLOSE_ALL(desktopId|*)
+    Query: SWITCH(desktopId)
         SWITCH: 
             Switch active desktop
                 <desktopId> - id of target desktop, starting from 0 (int, >= 0)
-        CLOSE_ALL:
-            Close all windows on target desktop
-                <desktopId> - id of target desktop, starting from 0 (int, >= 0)
-                * - current desktop id
 
 Binary opeators:
     Grab opened windows and process results.
@@ -438,11 +440,11 @@ Binary opeators:
         [...] - optional token
         -> - operator, which split data selecting and processing parts
         (...) - required parameter
-    Query: ALL|SINGLE [BY ID|REGEX|CONTAINS|FULL|DESK (pattern)] -> CLOSE|MV_TO(desktopId)|MV_SEPARATE(interval|*)|ACTIVE
+    Query: ALL|FIRST [BY ID|REGEX|CONTAINS|FULL|DESK (pattern)] -> CLOSE|MV_TO(desktopId)|MV_SEPARATE(interval|*)|ACTIVE
         Selectors:
             ALL:
                 Select all opened windows
-            SINGLE:
+            FIRST:
                 Select FIRST opened window
         Filters:
             BY ID:
@@ -486,13 +488,33 @@ Queries examples:
     Switch to second desktop:
         SWITCH(2)
     Close window, with name 'Music':
-        SINGLE BY FULL(Music) -> CLOSE
+        FIRST BY FULL(Music) -> CLOSE
     Make active window, which title match a regex:
-        SINGLE BY REGEX(\s+Pict\s+) -> ACTIVE
+        FIRST BY REGEX(\s+Pict\s+) -> ACTIVE
     Move all 'Chrome' windows (3) to 1-3 desktop:
         ALL BY CONTAINS (Chrome) -> MV_SEPARATE(1-3)
 
 '''
+
+def execute_single_query(query):
+    PrintUtil.log_info("Execute single query: %s"%query)
+    tokenizer = TokenParser(query)
+    tokenizer.execute()
+
+def parse_query_file(file_path):
+    return open(file_path).read().splitlines()
+
+def execute_rules_from_frile(file_path):
+    try:
+        queries = parse_query_file(file_path)
+        for query in queries:
+            execute_single_query(query)
+    except FileNotFoundError:
+        PrintUtil.log_error("Can't read %s query file, check if it exist or have righ permissions")
+        exit(1)
+
+def execute_default_query_file():
+    execute_rules_from_frile(f"{local_storage_path}/rules.txt")
 
 def get_params():
     parser = argparse.ArgumentParser(description="Automatize your desktop management", epilog=epilog_msg, formatter_class=RawTextHelpFormatter)
@@ -503,47 +525,22 @@ def get_params():
 
     options = parser.parse_args()
     return options
-    
 
 options = get_params()
 
-def execute_single_query(query):
-    PrintUtil.log_info("Execute single query: %s"%query)
-    tokenizer = TokenParser(query)
-    tokenizer.execute()
-
-def parse_query_file(file_path):
-    return open(file_path).read().splitlines()
-
-def execute_custom_query_file(file_path):
-    try:
-        queries = parse_query_file(file_path)
-        for query in queries:
-            execute_single_query(query)
-    except FileNotFoundError:
-        PrintUtil.log_error("Can't read %s query file, check if it exist or have righ permissions")
-        exit(1)
-
-def execute_default_query_file():
-    try:
-        default_path = "/etc/rules.txt"
-        queries = parse_query_file(default_path)
-        for query in queries:
-            execute_single_query(query)
-    except FileNotFoundError:
-        PrintUtil.log_error("Can't read %s query file, check if it exist or have righ permissions")
-        exit(1)
-
 def main():
+    execute_single_query(options.single_query)
+    '''
     if (options.single_query is not None):
         execute_single_query(options.single_query)
         exit(0)
 
     if (options.query_file):
-        execute_custom_query_file(options.query_file)
+        #execute_custom_query_file(options.query_file)
         exit(0)
     
     execute_default_query_file()
+    '''
 
 if __name__ == "__main__":
     main()

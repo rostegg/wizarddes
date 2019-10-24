@@ -26,7 +26,8 @@ class EmptyQueryResult(Exception):
 def wait():
     sleep(0.03)
 
-local_storage_path = '/etc/wizzardes'
+#local_storage_path = '/etc/wizzardes'
+local_storage_path = ''
 
 class PrintUtil:
     class Colors:
@@ -55,7 +56,7 @@ class PrintUtil:
     def log_success(msg):
         print("%s[+] %s%s"%(PrintUtil.Colors.OKGREEN, msg, PrintUtil.Colors.ENDC))
 
-class TokensType:
+class Tokens:
     ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE = range(15)
     CONVERSION_OPERATOR = '->' 
     DEFAULT_SCENARIO_TOKEN = '*'
@@ -71,64 +72,73 @@ class TokensType:
     @staticmethod
     def get(tokenName):
         try:
-            return getattr(TokensType, tokenName)
+            return getattr(Tokens, tokenName)
         except AttributeError:
-            if tokenName == TokensType.CONVERSION_OPERATOR:
-                return TokensType.CONVERSION_OPERATOR
+            if tokenName == Tokens.CONVERSION_OPERATOR:
+                return Tokens.CONVERSION_OPERATOR
             return None
 
     @staticmethod
     def contains_value(tokenName):
-        tokenType = TokensType.get(tokenName)
-        return tokenType in TokensType.TOKENS_WITH_VALUES
+        tokenType = Tokens.get(tokenName)
+        return tokenType in Tokens.TOKENS_WITH_VALUES
 
     @staticmethod
     def is_executable(tokenName):
-        tokenType = TokensType.get(tokenName)
-        return tokenType in TokensType.EXECUTABLE
+        tokenType = Tokens.get(tokenName)
+        return tokenType in Tokens.EXECUTABLE
     
     @staticmethod
     def is_unary(tokenName):
-        tokenType = TokensType.get(tokenName)
-        return tokenType in TokensType.UNARY_OPERATORS
+        tokenType = Tokens.get(tokenName)
+        return tokenType in Tokens.UNARY_OPERATORS
 
     @staticmethod
     def is_value_token(tokenName):
-        tokenType = TokensType.get(tokenName)
-        return tokenName != TokensType.CONVERSION_OPERATOR and tokenType == None
-
-def execute_subprocess(task):
-    p = Popen(task, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    output, err = p.communicate()
-    rc = p.returncode
-    if rc == 1:
-        raise WmctrlExeption("Can't execute `wmctrl`, exit code: `1`, error: %s"%str(err))
-    return output.decode("utf-8")
+        tokenType = Tokens.get(tokenName)
+        return tokenName != Tokens.CONVERSION_OPERATOR and tokenType == None
 
 class Utils:
     @staticmethod
     def dict_from_regex(target, reg):
         return [m.groupdict() for m in reg.finditer(target)]
 
+    @staticmethod
+    def get_ppid(windows_list, process):
+        from subprocess import check_output
+        ppids = check_output(["pidof",'firefox']).decode().replace('\n','').split(' ')
+        window_pids = set([ window['pid'] for window in windows_list ])
+        intersection = [ pid for pid in window_pids if pid in ppids ]
+        return None if len(intersection) == 0 else intersection[0]
+
 class WmctrlUtils:
-    # <windowId> <desktopId> <client> <windowTitle>
+    # <windowId> <desktopId> <pid> <client> <windowTitle>
     def get_windows_list(self):
-        output_str = execute_subprocess(['wmctrl', '-lp'])
+        output_str = self.execute_task(['-lp'])
         regex_window_list = re.compile(r'(?P<windowId>0x[0-9A-Fa-f]{8})\s+(?P<desktopId>[0-9]+)\s+(?P<pid>[0-9]+)\s+(?P<client>[A-Za-z0-9]+)\s+(?P<windowTitle>.+)\n')
         return Utils.dict_from_regex(output_str, regex_window_list)
 
     # <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
     def get_desktop_list(self):
-        output_str = execute_subprocess(['wmctrl', '-d'])
+        output_str = self.execute_task(['-d'])
         regex_desktop_list = re.compile(r'(?P<desktopId>[0-9]+)\s+(?P<active>[-*]{1})\s+DG:\s+(?P<geometry>[0-9]{1,5}x[0-9]{1,5})\s+VP:\s+(?P<viewPort>N/A|(?:[0-9]{1,5}\,[0-9]{1,5}))\s+WA:\s+(?P<workAreaGeometry>[0-9]{1,5}\,[0-9]{1,5})\s+(?P<workAreaResolution>[0-9]{1,5}x[0-9]{1,5})\s+(?P<title>[\s\w/]+)\n')
         return Utils.dict_from_regex(output_str, regex_desktop_list)
+    
+    def execute_task(self, task):
+        task = ['wmctrl'] + task
+        p = Popen(task, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc == 1:
+            raise WmctrlExeption(f"Can't execute `wmctrl` command {' '.join(task)}, exit code: `1`, error: {str(err)}")
+        return output.decode("utf-8")
 
 wmctrl_utils = WmctrlUtils()
 
 class RangeFilters:
     filter_all = lambda arr: arr
     filter_first = lambda arr : [ arr[0] ]
-    filter_last = lambda arr : [ arr[len(arr) - 1] ]
+    filter_last = lambda arr : [ arr[-1] ]
 
 class DataFilters:
     filter_by_id = lambda windows_list, filter_value: [ window for window in windows_list if filter_value == window['windowId'] ]
@@ -161,7 +171,30 @@ class Validators:
             reg = r"[0-9]{1,5}"
             return False if re.fullmatch(reg,id) is None else int(id) < len(desktop_list)
         except ValueError:
-            raise WrongQueryParameterException("Can't convert %s to integer..."%id)
+            raise WrongQueryParameterException(f"Can't convert {id} to integer...")
+
+class AppRunnersLoader:
+    def __init__(self):
+        self.app_runners_path = os.path.join(local_storage_path, "app_runners") 
+        self.__loaders = {}
+        self.__load()
+
+    def __load(self):
+        try:
+            lines = open(self.app_runners_path).read().splitlines()
+            for line in lines:
+                splited = line.split("::")
+                self.__loaders[splited[0]] = splited[1]
+        except FileNotFoundError:
+            PrintUtil.log_warn(f"'app_runners' file not found, you better create one...") 
+
+    def get_runner(self, name):
+        try:
+            return self.__loaders[name]
+        except KeyError:
+            raise WrongQueryParameterException(f"Can't find '{name}' runner in {self.app_runners_path}")
+
+app_runners = AppRunnersLoader() 
 
 def all_token_execute(state):
     state['range_filter_processor'] = RangeFilters.filter_all
@@ -177,7 +210,7 @@ def last_token_execute(state):
 
 def id_token_execute(state):
     if (not Validators.is_window_id_valid(state['value'])): 
-        raise WrongQueryParameterException("Not valid window id `%s` in `BY ID() filter`"%state['value'])
+        raise WrongQueryParameterException(f"Not valid window id `{state['value']}` in `BY ID() filter`")
     state['data_filter_processor'] = FilterObject(DataFilters.filter_by_id, state['value'])
     return state
 
@@ -187,7 +220,7 @@ def contains_token_execute(state):
 
 def desk_token_execute(state):
     if (not Validators.is_desktop_is_valid(state['value'])):
-        raise WrongQueryParameterException("Not valid desktop id `%s` in `BY DESK() filter`"%state['value'])
+        raise WrongQueryParameterException(f"Not valid desktop id `{state['value']}` in `BY DESK() filter`")
     state['data_filter_processor'] = FilterObject(DataFilters.filter_by_desk, state['value'])
     return state
 
@@ -200,10 +233,9 @@ def regex_token_execute(state):
     return state
 
 def mvto_token_execute(state):
-    command = ['wmctrl', '-ir', 'windowId', '-t', state['value']]
     for window in state['target_list']:
-        command[2] =  window['windowId']
-        execute_subprocess(command)
+        command = ['-ir', window['windowId'], '-t', state['value']]
+        wmctrl_utils.execute_task(command)
         wait()
     return state
 
@@ -211,20 +243,19 @@ def mvseparate_token_execute(state):
     state['desktopManager'].distributeWindows(state['target_list'], state['value'])
     return state
 
-# here
 def close_token_execute(state):
-    command = ['wmctrl', '-ic', 'windowId']
+    command = ['-ic', 'windowId']
     for window in state['target_list']:
-        command[2] = window['windowId']
-        execute_subprocess(command)
+        command = ['-ic', window['windowId']]
+        wmctrl_utils.execute_task(command)
         wait()
     return state
 
 def switch_token_execute(desktop_id):
     if (not Validators.is_desktop_is_valid(desktop_id)):
         raise WrongQueryParameterException(f"Not valid desktop id '{desktop_id}' in `SWITCH`, maybe desktop not yet created")
-    command = ['wmctrl', '-s' ,desktop_id]
-    execute_subprocess(command)
+    command = ['-s' ,desktop_id]
+    wmctrl_utils.execute_task(command)
 
 def active_token_execute(state):
     target = state['target_list']
@@ -233,8 +264,9 @@ def active_token_execute(state):
     target = target['windowId']
     if (not Validators.is_window_id_valid(target)):
         raise WrongQueryParameterException(f"Not valid window id {target} for `ACTIVE`")
-    command = ['wmctrl', '-ia', target]
-    execute_subprocess(command)
+    command = ['-ia', target]
+    wmctrl_utils.execute_task(command)
+    return state
 
 def conversion_token_execute(state):
     target_list = state['target_list'] if 'target_list' in state else wmctrl_utils.get_windows_list() 
@@ -245,43 +277,66 @@ def conversion_token_execute(state):
     state['target_list'] = target_list
     return state
 
+# a little bit ugly way to find parent pid of process, replace if find better solution
 def create_token_execute(state):
-    wait()
+    def windows_by_pid(pid):
+        windows_list = wmctrl_utils.get_windows_list()
+        target_windows = [ window for window in windows_list if window['pid'] == pid ]
+        return target_windows
+
+    app_runner = app_runners.get_runner(state['value'])
+    pid = Utils.get_ppid(wmctrl_utils.get_windows_list(), app_runner)
+    
+    target_windows = windows_by_pid(pid)
+
+    opened_windows_count = len(target_windows)
+
+    p = Popen(app_runner, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p.communicate()
+
+    rc = p.returncode
+    if rc == 1:
+        raise WmctrlExeption(f"Can't create window '{app_runner}'")
+
+    while(len(windows_by_pid(pid)) == opened_windows_count):
+        wait()
+    
+    target_windows = windows_by_pid(pid)
+    if len(target_windows) == 0 :
+        raise EmptyQueryResult("Can't find target window, maybe it is not created")
+    state['target_list'] = [ target_windows[-1] ]
     return state
 
 EXECUTOR_FUNCS = {
-    TokensType.ALL : all_token_execute,
-    TokensType.FIRST : first_token_execute,
-    TokensType.LAST : last_token_execute,
-    TokensType.ID : id_token_execute,
-    TokensType.CONTAINS: contains_token_execute,
-    TokensType.FULL: full_token_execute,
-    TokensType.REGEX: regex_token_execute,
-    TokensType.SWITCH: switch_token_execute,
-    TokensType.ACTIVE: active_token_execute,
-    TokensType.MV_SEPARATE: mvseparate_token_execute,
-    TokensType.MV_TO: mvto_token_execute,
-    TokensType.CLOSE: close_token_execute,
-    TokensType.DESK: desk_token_execute,
-    TokensType.CONVERSION_OPERATOR: conversion_token_execute,
-    TokensType.CREATE: create_token_execute
+    Tokens.ALL : all_token_execute,
+    Tokens.FIRST : first_token_execute,
+    Tokens.LAST : last_token_execute,
+    Tokens.ID : id_token_execute,
+    Tokens.CONTAINS: contains_token_execute,
+    Tokens.FULL: full_token_execute,
+    Tokens.REGEX: regex_token_execute,
+    Tokens.SWITCH: switch_token_execute,
+    Tokens.ACTIVE: active_token_execute,
+    Tokens.MV_SEPARATE: mvseparate_token_execute,
+    Tokens.MV_TO: mvto_token_execute,
+    Tokens.CLOSE: close_token_execute,
+    Tokens.DESK: desk_token_execute,
+    Tokens.CONVERSION_OPERATOR: conversion_token_execute,
+    Tokens.CREATE: create_token_execute
 }
 
 class DesktopManager:
-
     def __init__(self, desktop_list):
         self.desktop_list = desktop_list
     
     def distributeWindows(self, targets_list, interval):
-        interval_arr = [ i for i in range(0, len(targets_list))] if interval is TokensType.DEFAULT_SCENARIO_TOKEN else self.__parse_interval(interval, len(targets_list))
+        interval_arr = [ i for i in range(0, len(targets_list))] if interval is Tokens.DEFAULT_SCENARIO_TOKEN else self.__parse_interval(interval, len(targets_list))
         self.distributeWindowsByRange(targets_list, interval_arr)
 
     def distributeWindowsByRange(self, targets_list, ids_list):
-        command = ['wmctrl', '-ir', 'windowId', '-t', 'desktopId']
         for index, desktop_id in enumerate(ids_list):
-            command[2] = targets_list[index]['windowId']
-            command[4] = str(desktop_id)
-            execute_subprocess(command)
+            command = ['-ir', targets_list[index]['windowId'], '-t', desktop_id]
+            wmctrl_utils.execute_task(command)
             wait()
 
     '''
@@ -305,7 +360,6 @@ class DesktopManager:
             return [i for i in range(from_id, to_id)]
 
 class QueryExecutor:
-
     result = {}
 
     def __init__(self, tokens, query):
@@ -316,37 +370,36 @@ class QueryExecutor:
     
     def execute(self):
         try:
-            if (TokensType.is_unary(self.tokens[0])):
-                tokenType = TokensType.get(self.tokens[0])
-                self.executeUnaryOperator(tokenType)
+            if (Tokens.is_unary(self.tokens[0])):
+                tokenType = Tokens.get(self.tokens[0])
+                self.__execute_unary_operator(tokenType)
             else:
                 iterator = range(0, len(self.tokens)).__iter__()
                 for i in iterator:
                     token = self.tokens[i]
-                    # add actions for ->
-                    if (TokensType.is_executable(token)):
+                    if (Tokens.is_executable(token)):
                         print(f"Execute token {token}")
-                        tokenType = TokensType.get(token)
+                        tokenType = Tokens.get(token)
                         executor = EXECUTOR_FUNCS[tokenType]
-                        if (TokensType.contains_value(token)):
+                        if (Tokens.contains_value(token)):
                             try:
                                 self.result['value'] = self.tokens[i+1]
-                                self.is_valid_value(token, self.result['value'])
+                                self.__is_valid_value(token, self.result['value'])
                                 iterator.__next__()
                             except IndexError:
-                                raise WrongQueryParameterException("%s token require value..."%token)
+                                raise WrongQueryParameterException(f"{token} token require value...")
                         self.result = executor(self.result)
                         print(self.result)
                         print('-'*30)
                 print(len(self.result['target_list']))
         except KeyError: 
-            raise ExecuteQueryException("Can't execute query %s, it seems that the query is not composed correctly"%self.query)
+            raise ExecuteQueryException(f"Can't execute query {self.query}, it seems that the query is not composed correctly")
 
-    def is_valid_value(self, token, value):
-        if not TokensType.is_value_token(value):
-            raise WrongQueryParameterException("Seems, like after `%s` expected value, but it `%s`"%(token, value))
+    def __is_valid_value(self, token, value):
+        if not Tokens.is_value_token(value):
+            raise WrongQueryParameterException(f"Seems, like after `{token}` expected value, but it's `{value}`")
 
-    def executeUnaryOperator(self, tokenType):
+    def __execute_unary_operator(self, tokenType):
         if (len(self.tokens) != 2):
             raise WrongQueryParameterException("Unary operator requires only value and nothing more")
         executor = EXECUTOR_FUNCS[tokenType]
@@ -361,17 +414,15 @@ class TokenParser:
             self.simplified_tokens = self.simplify_tokens()
             self.query_executor = QueryExecutor(self.simplified_tokens, self.expression)
         except (ParseTokenException, WrongQueryParameterException, WmctrlExeption, EmptyQueryResult) as ex:
-            PrintUtil.log_error("Error occuring, while parsing tokens for `%s`:"%expression)
+            PrintUtil.log_error(f"Error occuring, while parsing tokens for `{self.expression}`:")
             PrintUtil.log_error(str(ex))
-            PrintUtil("Skiping `%s` query..."%expression)
 
     def execute(self):
         try:
             self.query_executor.execute()
         except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult) as ex:
-            PrintUtil.log_error("Error occuring, while executing `%s`:"%self.expression)
+            PrintUtil.log_error(f"Error occuring, while executing `{self.expression}`:")
             PrintUtil.log_error(str(ex))
-            PrintUtil.log_error("Skiping `%s` query..."%self.expression)
 
     def simplify_tokens(self):
         tokens_list = list()
@@ -379,10 +430,10 @@ class TokenParser:
             # skip empty tokens (like space at the end of line)
             if not token:
                 continue 
-            if token == TokensType.CONVERSION_OPERATOR:
+            if token == Tokens.CONVERSION_OPERATOR:
                 tokens_list.append(token)
                 continue
-            tokenType = TokensType.get(token)
+            tokenType = Tokens.get(token)
             if (tokenType is None):
                 result = self.is_value(token)
                 if (result is not None):
@@ -405,7 +456,8 @@ class TokenParser:
 
     def is_token_with_value(self, token):
         # closing ? from {1}
-        #reg = r"(?P<token>[\S]+)\(\W?(?P<tokenValue>[\w\s\S]+)\W?\)"
+        # old regex:
+        # reg = r"(?P<token>[\S]+)\(\W?(?P<tokenValue>[\w\s\S]+)\W?\)"
         reg = r"(?P<token>[\S]+)\((?P<tokenValue>[\w\s\S]+)\)"
         result = re.search(reg,token)
         if result is None:
@@ -530,17 +582,6 @@ options = get_params()
 
 def main():
     execute_single_query(options.single_query)
-    '''
-    if (options.single_query is not None):
-        execute_single_query(options.single_query)
-        exit(0)
-
-    if (options.query_file):
-        #execute_custom_query_file(options.query_file)
-        exit(0)
-    
-    execute_default_query_file()
-    '''
 
 if __name__ == "__main__":
     main()

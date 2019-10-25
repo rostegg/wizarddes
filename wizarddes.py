@@ -99,7 +99,7 @@ class PrintUtil:
         options.debug_mode and pr_print(msg)
         #options.debug_mode and print(f"{PrintUtil.Colors.BOLD}[DEBUG] {msg}{PrintUtil.Colors.ENDC}")
 
-epilog_msg = '''
+epilog_msg = """
 Unary operators:
     Query: SWITCH(desktopId)
         SWITCH: 
@@ -165,8 +165,7 @@ Queries examples:
         FIRST BY REGEX(\s+Pict\s+) -> ACTIVE
     Move all 'Chrome' windows (3) to 1-3 desktop:
         ALL BY CONTAINS (Chrome) -> MV_SEPARATE(1-3)
-
-'''
+"""
 
 def get_params():
     parser = argparse.ArgumentParser(description="Automatize your desktop management", epilog=epilog_msg, formatter_class=RawTextHelpFormatter)
@@ -185,15 +184,17 @@ options = get_params()
 # query parser logic
 class Tokens:
     ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE = range(15)
+    
     CONVERSION_OPERATOR = '->' 
     DEFAULT_SCENARIO_TOKEN = '*'
+    AND_OPERATOR = '&'
 
     UNARY_OPERATORS = [SWITCH]
 
     EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE] 
     RANGE_FILTERS = [ALL, FIRST, LAST]
     DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
-
+    SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
     TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK, CREATE]
 
     @staticmethod
@@ -201,8 +202,8 @@ class Tokens:
         try:
             return getattr(Tokens, tokenName)
         except AttributeError:
-            if tokenName == Tokens.CONVERSION_OPERATOR:
-                return Tokens.CONVERSION_OPERATOR
+            if tokenName in Tokens.SPECIAL_OPERATOR:
+                return tokenName
             return None
 
     @staticmethod

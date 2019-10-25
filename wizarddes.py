@@ -2,9 +2,9 @@
 
 from subprocess import Popen, PIPE, check_output
 import re, os, argparse
-from pprint import pprint
 from argparse import RawTextHelpFormatter
 from time import sleep
+import datetime
 
 # exceptions
 class ParseTokenException(Exception):
@@ -61,7 +61,7 @@ class PrintUtil:
 
     @staticmethod
     def log_debug(msg):
-        options.debug_mode and print(f"{PrintUtil.Colors.BOLD}[DEBUG] {msg}{PrintUtil.Colors.ENDC}")
+        options.debug_mode and print(f"{PrintUtil.Colors.BOLD}[DEBUG][{datetime.datetime.now()}] {msg}{PrintUtil.Colors.ENDC}")
 
     @staticmethod
     def log_debug_object(msg):
@@ -409,7 +409,7 @@ def active_token_execute(state):
     target = state['target_list']
     if len(target) != 1:
         raise ExecuteQueryException(f"Can't set `ACTIVE` for {len(target)} windows, only single target...")
-    target = target['windowId']
+    target = target[0]['windowId']
     PrintUtil.log_debug(f"Executing 'ACTIVE' token, on <{target}> window")
     if (not Validators.is_window_id_valid(target)):
         raise WrongQueryParameterException(f"Not valid window id {target} for `ACTIVE`")
@@ -438,35 +438,55 @@ def conversion_token_execute(state):
 # a little bit ugly way to find parent pid of process, replace if find better solution
 # bad with new opened windows
 def create_token_execute(state):
-    def windows_by_pid(pid):
-        windows_list = wmctrl_utils.get_windows_list()
-        target_windows = [ window for window in windows_list if window['pid'] == pid ]
-        return target_windows
+    def app_pids(app):
+        ps_cux_output = check_output(["ps", "cux"]).decode().split('\n')
+        target_procs = [proc for proc in ps_cux_output if app in proc]
+        if len(target_procs) == 0:
+            return []
+        pid_regex = re.compile(r'[A-Za-z\.\_\-]+\s+(?P<pid>[0-9]{1,7})\s+', re.MULTILINE)
+        pids = [ m['pid'] for m in pid_regex.finditer("\n".join(target_procs)) ]
+        return pids
 
     app_runner = app_runners.get_runner(state['value'])
-
+    PrintUtil.log_debug(f"Executing 'CREATE' token, for '{app_runner}' runner")
     
-    '''
-    pid = Utils.get_ppid(wmctrl_utils.get_windows_list(), app_runner)
-
-    opened_windows_count = len(windows_by_pid(pid)) if pid is not None else 0
-    print(windows_by_pid(pid))
-    p = Popen(app_runner, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    print(p.pid)
-    p.wait()
-
+    # take last proc pid in list
+    windows_snapshot = wmctrl_utils.get_windows_list()
+    windows_snapshot_count = len(windows_snapshot)
+    PrintUtil.log_debug(f"Taking windows snapshot, founded '{windows_snapshot_count}' windows")
+    PrintUtil.log_debug_object(windows_snapshot)
+    p = Popen([app_runner], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    _, err = p.communicate()
     rc = p.returncode
     if rc == 1:
-        raise WmctrlExeption(f"Can't create window '{app_runner}'")
+        raise ExecuteQueryException(f"Can't execute runner '{app_runner}', exit code: `1`, error: {err.decode()}")
 
-    while(len(windows_by_pid(pid)) == opened_windows_count):
-        wait()
+    current_windows = wmctrl_utils.get_windows_list()
+    wait_lock = True
     
-    target_windows = windows_by_pid(pid)
-    if len(target_windows) == 0 :
-        raise EmptyQueryResult("Can't find target window, maybe it is not created")
-    state['target_list'] = [ target_windows[-1] ]
-    '''
+    pids = app_pids(app_runner)
+    if (len(pids) == 0):
+        raise ExecuteQueryException(f"Can't find PID for '{app_runner}, maybe process freezed and don't started'")
+    PrintUtil.log_debug(f"Finded {len(pids)} processes for '{app_runner}' runner")
+    PrintUtil.log_debug_object(pids)
+    pid = pids[-1]
+    PrintUtil.log_debug(f"Starting monitoring for the formation of '{app_runner}' window")
+    while wait_lock:
+        # wait for new windows opening
+        while windows_snapshot_count == len(current_windows):
+            current_windows = wmctrl_utils.get_windows_list()
+            wait()
+        # check for target window   
+        intersect = [ window for window in current_windows if (window not in windows_snapshot) ]
+        for window in intersect:
+            if window['pid'] == pid:
+                state['target_list'] = [ window ]
+                wait_lock = False
+                break
+        windows_snapshot = current_windows
+        windows_snapshot_count = len(windows_snapshot)
+    PrintUtil.log_debug(f"Finded target window for '{app_runner}'")
+    PrintUtil.log_debug_object(state['target_list'])
     return state
 
 EXECUTOR_FUNCS = {

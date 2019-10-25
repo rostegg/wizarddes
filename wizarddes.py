@@ -230,16 +230,6 @@ class Utils:
     def dict_from_regex(target, reg):
         return [m.groupdict() for m in reg.finditer(target)]
 
-    @staticmethod
-    def get_ppid(windows_list, process):
-        try:
-            ppids = check_output(["pidof", process]).decode().replace('\n','').split(' ')
-        except Exception:
-            return None
-        window_pids = set([ window['pid'] for window in windows_list ])
-        intersection = [ pid for pid in window_pids if pid in ppids ]
-        return None if len(intersection) == 0 else intersection[0]
-
 class WmctrlUtils:
     # <windowId> <desktopId> <pid> <client> <windowTitle>
     def get_windows_list(self):
@@ -435,8 +425,6 @@ def conversion_token_execute(state):
     state['target_list'] = target_list
     return state
 
-# a little bit ugly way to find parent pid of process, replace if find better solution
-# bad with new opened windows
 def create_token_execute(state):
     def app_pids(app):
         ps_cux_output = check_output(["ps", "cux"]).decode().split('\n')

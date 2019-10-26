@@ -22,6 +22,12 @@ class WmctrlExeption(Exception):
 class EmptyQueryResult(Exception):
     pass
 
+class EwmhException(Exception):
+    pass
+
+class NotAvailableOperation(Exception):
+    pass
+
 # main script utils
 
 # well, wmctrl sometimes don't execute immediatly tasks range, so we need give it a little bit of time...
@@ -183,15 +189,15 @@ options = get_params()
 
 # query parser logic
 class Tokens:
-    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE = range(15)
-    
+    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT = range(16)
+
     CONVERSION_OPERATOR = '->' 
     DEFAULT_SCENARIO_TOKEN = '*'
     AND_OPERATOR = '&'
 
-    UNARY_OPERATORS = [SWITCH]
+    UNARY_OPERATORS = [SWITCH, WAIT]
 
-    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE] 
+    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT] 
     RANGE_FILTERS = [ALL, FIRST, LAST]
     DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
     SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
@@ -200,10 +206,10 @@ class Tokens:
     @staticmethod
     def get(tokenName):
         try:
-            return getattr(Tokens, tokenName)
-        except AttributeError:
             if tokenName in Tokens.SPECIAL_OPERATOR:
                 return tokenName
+            return getattr(Tokens, tokenName)
+        except AttributeError:
             return None
 
     @staticmethod
@@ -230,6 +236,44 @@ class Utils:
     @staticmethod
     def dict_from_regex(target, reg):
         return [m.groupdict() for m in reg.finditer(target)]
+
+class WindowsManager(object):
+    def get_windows_list(self):
+        raise NotAvailableOperation("Not implemented in manager impl")
+
+    def get_desktop_list(self):
+        raise NotAvailableOperation("Not implemented in manager impl")
+        
+    def mv_to(self, windows_id, desktop_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+
+    def close(self, windows_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+    
+    def switch(self, desktop_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+    
+    def active(self, window_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+
+class EwmhUtils(WindowsManager):
+    def get_windows_list(self):
+        raise NotAvailableOperation("Not implemented in manager impl")
+
+    def get_desktop_list(self):
+        raise NotAvailableOperation("Not implemented in manager impl")
+        
+    def mv_to(self, windows_id, desktop_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+
+    def close(self, windows_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+    
+    def switch(self, desktop_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+    
+    def active(self, window_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
 
 class WmctrlUtils:
     # <windowId> <desktopId> <pid> <client> <windowTitle>
@@ -396,6 +440,9 @@ def switch_token_execute(desktop_id):
     command = ['-s' ,desktop_id]
     wmctrl_utils.execute_task(command)
 
+def wait_token_execute(seconds):
+    PrintUtil.log_debug(f"Executing 'WAIT' token for '{seconds}' seconds")
+
 def active_token_execute(state):
     target = state['target_list']
     if len(target) != 1:
@@ -444,11 +491,17 @@ def create_token_execute(state):
     windows_snapshot_count = len(windows_snapshot)
     PrintUtil.log_debug(f"Taking windows snapshot, founded '{windows_snapshot_count}' windows")
     PrintUtil.log_debug_object(windows_snapshot)
+    
+    '''
+        Method above would create background process with pid not like the parent process
+        So, for now using p.wait() for wait of ending of ui loading
+        os.system(f"{app_runner} &")
+    '''
     p = Popen([app_runner], stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    _, err = p.communicate()
+    p.wait()
     rc = p.returncode
     if rc == 1:
-        raise ExecuteQueryException(f"Can't execute runner '{app_runner}', exit code: `1`, error: {err.decode()}")
+        raise ExecuteQueryException(f"Can't execute runner '{app_runner}', exit code: `1`")
 
     current_windows = wmctrl_utils.get_windows_list()
     wait_lock = True
@@ -493,7 +546,8 @@ EXECUTOR_FUNCS = {
     Tokens.CLOSE: close_token_execute,
     Tokens.DESK: desk_token_execute,
     Tokens.CONVERSION_OPERATOR: conversion_token_execute,
-    Tokens.CREATE: create_token_execute
+    Tokens.CREATE: create_token_execute,
+    Tokens.WAIT: wait_token_execute
 }
 
 class DesktopManager:

@@ -289,7 +289,6 @@ class EwmhUtils(WindowsManager):
     
     # <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
     def get_desktops_list(self):
-        print(self.__get_property('_NET_DESKTOP_NAMES',False))    # names of desk
         desktops_list = list()
         desktops_work_area_geometry = self.__get_property('_NET_WORKAREA', False)
         desktops_geometry = self.__get_property('_NET_DESKTOP_GEOMETRY',False)
@@ -308,7 +307,19 @@ class EwmhUtils(WindowsManager):
             # add desktops name later
             desktops_list.append(desktop_data_object)
         return desktops_list
-       
+
+    def mv_to(self, windows_id, desktop_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+
+    def close(self, windows_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+    
+    def switch(self, desktop_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+    
+    def active(self, window_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+
     def __parse_value(self, value, single):
         value = value.decode() if isinstance(value, (bytes, bytearray)) else value
         value = (str(value[0]) if single else value) if isinstance(value, (array)) else value
@@ -321,18 +332,6 @@ class EwmhUtils(WindowsManager):
 
     def __create_window(self, window_id):
         return self.display.create_resource_object('window', window_id) if window_id is not None else None
-    
-    def mv_to(self, windows_id, desktop_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
-
-    def close(self, windows_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
-    
-    def switch(self, desktop_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
-    
-    def active(self, window_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
 
 class WmctrlUtils:
     # <windowId> <desktopId> <pid> <client> <windowTitle>

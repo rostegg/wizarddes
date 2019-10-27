@@ -34,7 +34,6 @@ class XlibManager:
     
     # <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
     def get_desktops_list(self):
-        print(self.__get_property('_NET_DESKTOP_NAMES',False))    # names of desk
         desktops_list = list()
         desktops_work_area_geometry = self.__get_property('_NET_WORKAREA', False)
         desktops_geometry = self.__get_property('_NET_DESKTOP_GEOMETRY',False)

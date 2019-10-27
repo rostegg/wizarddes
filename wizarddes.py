@@ -4,6 +4,8 @@ from subprocess import Popen, PIPE, check_output
 import re, os, argparse
 from argparse import RawTextHelpFormatter
 from time import sleep
+from Xlib import display, X, protocol
+from array import array
 import datetime
 
 # exceptions
@@ -33,9 +35,6 @@ class NotAvailableOperation(Exception):
 # well, wmctrl sometimes don't execute immediatly tasks range, so we need give it a little bit of time...
 def wait():
     sleep(0.05)
-
-#local_storage_path = '/etc/wizzardes'
-local_storage_path = ''
 
 class PrintUtil:
     class Colors:
@@ -103,7 +102,6 @@ class PrintUtil:
             else:
                 PrintUtil.log_debug(obj)
         options.debug_mode and pr_print(msg)
-        #options.debug_mode and print(f"{PrintUtil.Colors.BOLD}[DEBUG] {msg}{PrintUtil.Colors.ENDC}")
 
 epilog_msg = """
 Unary operators:
@@ -187,6 +185,9 @@ def get_params():
 
 options = get_params()
 
+#local_storage_path = '/etc/wizzardes'
+local_storage_path = ''
+
 # query parser logic
 class Tokens:
     ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT = range(16)
@@ -236,12 +237,17 @@ class Utils:
     @staticmethod
     def dict_from_regex(target, reg):
         return [m.groupdict() for m in reg.finditer(target)]
+    @staticmethod
+    def to_hex(s):
+        def zpad_hex(s):
+            return '0x' + s[2:].zfill(8)
+        return zpad_hex(hex(s))
 
 class WindowsManager(object):
     def get_windows_list(self):
         raise NotAvailableOperation("Not implemented in manager impl")
 
-    def get_desktop_list(self):
+    def get_desktops_list(self):
         raise NotAvailableOperation("Not implemented in manager impl")
         
     def mv_to(self, windows_id, desktop_id):
@@ -256,13 +262,66 @@ class WindowsManager(object):
     def active(self, window_id):
         raise NotAvailableOperation("Not implemented in manager impl")
 
+# later should change data formats for windows info
 class EwmhUtils(WindowsManager):
+    def __init__(self, target_display = None, root = None):
+        self.display = target_display or display.Display()
+        self.root = self.display.screen().root
+        self.required_windows_fieds = {
+            'desktopId' : '_NET_WM_DESKTOP',
+            'pid' : '_NET_WM_PID',
+            'client' : 'WM_CLIENT_MACHINE',
+            'windowTitle' : '_NET_WM_NAME' 
+        }
+    
+    # <windowId> <desktopId> <pid> <client> <windowTitle>
     def get_windows_list(self):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        target_windows = [ self.__create_window(w) for w in self.__get_property('_NET_CLIENT_LIST')]
+        windows_list = list() 
+        for window in target_windows:
+            window_data_object = {}
+            window_data_object['windowId'] = Utils.to_hex(window.id)
+            for key, value in self.required_windows_fieds.items():  
+                value = self.__get_property(value, window)
+                window_data_object[key] = value
+            windows_list.append(window_data_object)
+        return windows_list
+    
+    # <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
+    def get_desktops_list(self):
+        print(self.__get_property('_NET_DESKTOP_NAMES',False))    # names of desk
+        desktops_list = list()
+        desktops_work_area_geometry = self.__get_property('_NET_WORKAREA', False)
+        desktops_geometry = self.__get_property('_NET_DESKTOP_GEOMETRY',False)
+        current_desktop = int(self.__get_property('_NET_CURRENT_DESKTOP'))
+        desktops_count = int(self.__get_property('_NET_NUMBER_OF_DESKTOPS'))
+        view_port = self.__get_property('_NET_DESKTOP_VIEWPORT', False)
+        for desktop_id in range(0,desktops_count):
+            desktop_data_object = {}
+            desktop_data_object['desktopId'] = desktop_id
+            desktop_data_object['active'] = '*' if desktop_id == current_desktop else '-'
+            work_area_data = desktops_work_area_geometry[desktop_id*4:desktop_id*4+4]
+            desktop_data_object['workAreaGeometry'] = f"{work_area_data[0]}.{work_area_data[1]}"
+            desktop_data_object['workAreaResolution'] = f"{work_area_data[2]}x{work_area_data[3]}"
+            desktop_data_object['geometry'] = f"{desktops_geometry[0]}x{desktops_geometry[1]}"
+            desktop_data_object['viewport'] = f"{view_port[0]},{view_port[1]}" if desktop_id == current_desktop else 'N/A'
+            # add desktops name later
+            desktops_list.append(desktop_data_object)
+        return desktops_list
+       
+    def __parse_value(self, value, single):
+        value = value.decode() if isinstance(value, (bytes, bytearray)) else value
+        value = (str(value[0]) if single else value) if isinstance(value, (array)) else value
+        return value
 
-    def get_desktop_list(self):
-        raise NotAvailableOperation("Not implemented in manager impl")
-        
+    def __get_property(self, atom_type, single = True,target=None):
+        target = self.root if target is None else target
+        atom = target.get_full_property(self.display.get_atom(atom_type), X.AnyPropertyType)
+        return self.__parse_value(atom.value, single) if hasattr(atom, 'value') else None
+
+    def __create_window(self, window_id):
+        return self.display.create_resource_object('window', window_id) if window_id is not None else None
+    
     def mv_to(self, windows_id, desktop_id):
         raise NotAvailableOperation("Not implemented in manager impl")
 
@@ -283,7 +342,7 @@ class WmctrlUtils:
         return Utils.dict_from_regex(output_str, regex_window_list)
 
     # <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
-    def get_desktop_list(self):
+    def get_desktops_list(self):
         output_str = self.execute_task(['-d'])  
         regex_desktop_list = re.compile(r'(?P<desktopId>[0-9]+)\s+(?P<active>[-*]{1})\s+DG:\s+(?P<geometry>[0-9]{1,5}x[0-9]{1,5})\s+VP:\s+(?P<viewPort>N/A|(?:[0-9]{1,5}\,[0-9]{1,5}))\s+WA:\s+(?P<workAreaGeometry>[0-9]{1,5}\,[0-9]{1,5})\s+(?P<workAreaResolution>[0-9]{1,5}x[0-9]{1,5})\s+(?P<title>[\s\w/]+\n)', re.MULTILINE)
         return Utils.dict_from_regex(output_str, regex_desktop_list)
@@ -297,6 +356,18 @@ class WmctrlUtils:
         if rc == 1:
             raise WmctrlExeption(f"Can't execute `wmctrl` command {' '.join(task)}, exit code: `1`, error: {err.decode()}")
         return output.decode("utf-8")
+    
+    def mv_to(self, windows_id, desktop_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+
+    def close(self, windows_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+    
+    def switch(self, desktop_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
+    
+    def active(self, window_id):
+        raise NotAvailableOperation("Not implemented in manager impl")
 
 wmctrl_utils = WmctrlUtils()
 
@@ -310,7 +381,7 @@ class DataFilters:
     filter_by_contains = lambda windows_list, filter_value: [ window for window in windows_list if filter_value in window['windowTitle'] ]
     filter_by_regex = lambda windows_list, filter_value: [ window for window in windows_list if re.match(filter_value, window['windowTitle']) ] 
     filter_by_full = lambda windows_list, filter_value: [ window for window in windows_list if filter_value ==  window['windowTitle'] ]
-    filter_by_desk =lambda windows_list, filter_value: lambda windows_list, filter_value: [ window for window in windows_list if filter_value == window['desktopId'] ]
+    filter_by_desk =lambda windows_list, filter_value: [ window for window in windows_list if filter_value == window['desktopId'] ]
 
 class FilterObject:
     def __init__(self, filter_func, filter_value):
@@ -332,7 +403,7 @@ class Validators:
     @staticmethod
     def is_desktop_is_valid(id):
         try:
-            desktop_list = wmctrl_utils.get_desktop_list()
+            desktop_list = wmctrl_utils.get_desktops_list()
             reg = r"[0-9]{1,5}"
             return False if re.fullmatch(reg,id) is None else int(id) < len(desktop_list)
         except ValueError:
@@ -441,7 +512,13 @@ def switch_token_execute(desktop_id):
     wmctrl_utils.execute_task(command)
 
 def wait_token_execute(seconds):
-    PrintUtil.log_debug(f"Executing 'WAIT' token for '{seconds}' seconds")
+    try:
+        default_seconds = 5
+        seconds = default_seconds if seconds == Tokens.DEFAULT_SCENARIO_TOKEN or int(seconds) < 0 else int(seconds)
+        PrintUtil.log_debug(f"Executing 'WAIT' token for '{seconds}' seconds")
+        sleep(seconds)
+    except ValueError:
+        raise ExecuteQueryException(f"Can't convert {seconds} to int")
 
 def active_token_execute(state):
     target = state['target_list']
@@ -562,7 +639,7 @@ class DesktopManager:
 
     def distributeWindowsByRange(self, targets_list, ids_list):
         for index, desktop_id in enumerate(ids_list):
-            command = ['-ir', targets_list[index]['windowId'], '-t', desktop_id]
+            command = ['-ir', targets_list[index]['windowId'], '-t', str(desktop_id)]
             PrintUtil.log_debug(f"Moving window <{targets_list[index]['windowId']}> to {desktop_id}")
             wmctrl_utils.execute_task(command)
             wait()
@@ -599,7 +676,7 @@ class QueryExecutor:
     def __init__(self, tokens, query):
         self.query = query
         self.tokens = tokens
-        desktop_list = wmctrl_utils.get_desktop_list()
+        desktop_list = wmctrl_utils.get_desktops_list()
         PrintUtil.log_debug(f"Desktop list on moment, when query executor was created :")
         PrintUtil.log_debug_object(desktop_list)
         self.state['desktopManager'] = DesktopManager(desktop_list)
@@ -654,14 +731,14 @@ class TokenParser:
             self.simplified_tokens = self.simplify_tokens()
             self.query_executor = QueryExecutor(self.simplified_tokens, self.expression)
         except (ParseTokenException, WrongQueryParameterException, WmctrlExeption, EmptyQueryResult) as ex:
-            PrintUtil.log_error(f"Error occuring, while parsing tokens for `{self.expression}`:")
+            PrintUtil.log_error(f"Error occurring, while parsing tokens for `{self.expression}`:")
             PrintUtil.log_error(str(ex))
 
     def execute(self):
         try:
             self.query_executor.execute()
         except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult) as ex:
-            PrintUtil.log_error(f"Error occuring, while executing `{self.expression}`:")
+            PrintUtil.log_error(f"Error occurring, while executing `{self.expression}`:")
             PrintUtil.log_error(str(ex))
 
     def simplify_tokens(self):

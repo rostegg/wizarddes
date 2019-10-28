@@ -4,7 +4,6 @@ from subprocess import Popen, PIPE, check_output
 import re, os, argparse
 from argparse import RawTextHelpFormatter
 from time import sleep
-from Xlib import display, X, protocol
 from array import array
 import datetime
 
@@ -264,6 +263,8 @@ if (options.use_wmctrl):
     if (not Utils.wmctrl_status()):
         PrintUtil.log_error("Seems, like `wmctrl` is not installed...")
         exit(1)
+else:
+    from Xlib import display, X, protocol
 
 class WindowsManager(object):
     def get_windows_list(self):

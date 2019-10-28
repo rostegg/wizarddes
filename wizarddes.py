@@ -264,22 +264,22 @@ if (options.use_wmctrl):
 
 class WindowsManager(object):
     def get_windows_list(self):
-        raise NotAvailableOperation("Not implemented")
+        raise NotAvailableOperation("Not implemented 'get_windows_list'")
 
     def get_desktops_list(self):
-        raise NotAvailableOperation("Not implemented")
+        raise NotAvailableOperation("Not implemented 'get_desktops_list'")
         
-    def mv_to(self, windows_id, desktop_id):
-        raise NotAvailableOperation("Not implemented")
+    def mv_to(self, window_id, desktop_id):
+        raise NotAvailableOperation("Not implemented 'mv_to'")
 
-    def close(self, windows_id):
-        raise NotAvailableOperation("Not implemented")
+    def close(self, window_id):
+        raise NotAvailableOperation("Not implemented 'close'")
     
     def switch(self, desktop_id):
-        raise NotAvailableOperation("Not implemented")
+        raise NotAvailableOperation("Not implemented 'switch'")
     
     def active(self, window_id):
-        raise NotAvailableOperation("Not implemented")
+        raise NotAvailableOperation("Not implemented 'active'")
 
 # later should change data formats for windows info
 class XlibUtils(WindowsManager):
@@ -327,24 +327,46 @@ class XlibUtils(WindowsManager):
             desktops_list.append(desktop_data_object)
         return desktops_list
 
-    def mv_to(self, windows_id, desktop_id):
-        raise NotAvailableOperation("Not implemented")
+    def mv_to(self, window_id, desktop_id):
+        window = self.__create_window(int(window_id, 16))
+        self.__set_property('_NET_WM_DESKTOP', [int(desktop_id), 1], target=window)
 
-    def close(self, windows_id):
-        raise NotAvailableOperation("Not implemented")
-    
-    def switch(self, desktop_id):
-        raise NotAvailableOperation("Not implemented")
-    
+    def close(self, window_id):
+        window = self.__create_window(int(window_id, 16))
+        self.__set_property('_NET_CLOSE_WINDOW', [X.CurrentTime, 1], target=window)
+
     def active(self, window_id):
-        raise NotAvailableOperation("Not implemented")
+        window_id = int(window_id, 16)
+        window = self.__create_window(window_id)
+        target_desktop = self.__get_property('_NET_WM_DESKTOP', target = window)
+        self.switch(target_desktop)
+        self.__set_property('_NET_ACTIVE_WINDOW', [1, X.CurrentTime, window_id], target=window)
+
+    def switch(self, desktop_id):
+        desktop_id = int(desktop_id)
+        self.__set_property('_NET_CURRENT_DESKTOP', [desktop_id, X.CurrentTime])
 
     def __parse_value(self, value, single):
         value = value.decode() if isinstance(value, (bytes, bytearray)) else value
         value = (str(value[0]) if single else value) if isinstance(value, (array)) else value
         return value
 
-    def __get_property(self, atom_type, single = True,target=None):
+    def __set_property(self, atom_type, data, target = None):
+        target = self.root if target is None else target
+        
+        data = (data+[0]*(5-len(data)))[:5]
+        dataSize = 32
+
+        ev = protocol.event.ClientMessage(
+            window=target,
+            client_type=self.display.get_atom(atom_type), data=(dataSize,data))
+    
+        mask = (X.SubstructureRedirectMask | X.SubstructureNotifyMask)
+            
+        self.display.send_event(self.root, ev, event_mask=mask)
+        self.display.flush()
+
+    def __get_property(self, atom_type, single = True,target = None):
         target = self.root if target is None else target
         atom = target.get_full_property(self.display.get_atom(atom_type), X.AnyPropertyType)
         return self.__parse_value(atom.value, single) if hasattr(atom, 'value') else None
@@ -770,7 +792,7 @@ class TokenParser:
     def execute(self):
         try:
             self.query_executor.execute()
-        except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult) as ex:
+        except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult, NotAvailableOperation) as ex:
             PrintUtil.log_error(f"Error occurring, while executing `{self.expression}`:")
             PrintUtil.log_error(str(ex))
 

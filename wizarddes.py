@@ -730,15 +730,18 @@ class DesktopManager:
         PrintUtil.log_debug(f"Not default scenario, parsing given interval")
         cleared_interval = "".join(interval.split())
         PrintUtil.log_debug(f"Cleared interval: {cleared_interval}")
-        sequnce_regex = r"(?:[0-9]{1,3},){2,}[0-9]{1,3}$"
+        # not sure about sequence parser
+        #sequence_regex = r"(?:[0-9]{1,3},){2,}[0-9]{1,3}$"
+        sequence_regex = r"(?:[0-9]+\,*)+"
         primal_regex = re.compile(r"(?P<fromId>[0-9]{1,3})?\-?(?P<toId>[0-9]{1,3})?")
-        if (re.fullmatch(sequnce_regex, cleared_interval) is not None):
+        if (re.fullmatch(sequence_regex, cleared_interval) is not None):
             PrintUtil.log_debug(f"Detected sequence interval type")
             return list(map(int, cleared_interval.split(',')))
         else:
             # maybe change primal regex later, to avoide excess data (false positive triggering, beacuse all <?>)
             PrintUtil.log_debug(f"Detected primal interval type, trying to obtain range")
             interval_dict = Utils.dict_from_regex(cleared_interval, primal_regex)
+            print(interval_dict)
             from_id = interval_dict[0].fromId if interval_dict[0].fromId is not None else 0
             PrintUtil.log_debug(f"Decided from_id='{from_id}'")
             to_id = interval_dict[0].toId if interval_dict[0].toId is not None else default_to

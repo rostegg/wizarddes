@@ -23,7 +23,6 @@ Wizarddes - it's 'single-file' script without dependcies (well, almost), which a
 TODO: Support for remaining commands:  
     RESIZE(mvarg)|STATE(starg)|RENAME(name)
     VIEWPORT(x,y)
-new range filter
 ```
 
 ## Install

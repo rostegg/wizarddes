@@ -24,10 +24,7 @@ class WmctrlExeption(Exception):
 class EmptyQueryResult(Exception):
     pass
 
-class EwmhException(Exception):
-    pass
-
-class NotAvailableOperation(Exception):
+class NotAvailableOperatioException(Exception):
     pass
 
 # main script utils
@@ -270,22 +267,22 @@ if (options.use_wmctrl):
 
 class WindowsManager(object):
     def get_windows_list(self):
-        raise NotAvailableOperation("Not implemented 'get_windows_list'")
+        raise NotAvailableOperatioException("Not implemented 'get_windows_list'")
 
     def get_desktops_list(self):
-        raise NotAvailableOperation("Not implemented 'get_desktops_list'")
+        raise NotAvailableOperatioException("Not implemented 'get_desktops_list'")
         
     def mv_to(self, window_id, desktop_id):
-        raise NotAvailableOperation("Not implemented 'mv_to'")
+        raise NotAvailableOperatioException("Not implemented 'mv_to'")
 
     def close(self, window_id):
-        raise NotAvailableOperation("Not implemented 'close'")
+        raise NotAvailableOperatioException("Not implemented 'close'")
     
     def switch(self, desktop_id):
-        raise NotAvailableOperation("Not implemented 'switch'")
+        raise NotAvailableOperatioException("Not implemented 'switch'")
     
     def active(self, window_id):
-        raise NotAvailableOperation("Not implemented 'active'")
+        raise NotAvailableOperatioException("Not implemented 'active'")
 
 # later should change data formats for windows info
 class XlibUtils(WindowsManager):
@@ -815,7 +812,7 @@ class TokenParser:
     def execute(self):
         try:
             self.query_executor.execute()
-        except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult, NotAvailableOperation) as ex:
+        except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult, NotAvailableOperatioException) as ex:
             PrintUtil.log_error(f"Error occurring, while executing `{self.expression}`:")
             PrintUtil.log_error(str(ex))
 

@@ -73,35 +73,105 @@ class PrintUtil:
         def color_print(text, color = PrintUtil.Colors.BOLD, end = '\n'):
             print(f"{color}{text}{PrintUtil.Colors.ENDC}", end=end)
 
-        def pr_dict(d, indent=0):
+        def pretty_dict(d, indent=0):
             for key, value in d.items():
                 color_print(f"{PrintUtil.indent_symbol * indent}{key}:", end='')
                 if isinstance(value, dict):
                     print()
-                    pr_dict(value, indent+1)
+                    pretty_dict(value, indent+1)
                 elif isinstance(value, list):
                     print()
-                    pr_list(value, indent+1)
+                    pretty_list(value, indent+1)
                 else:
                     color_print(f"{PrintUtil.indent_symbol}{value}")
 
-        def pr_list(l, indent=0):
+        def pretty_list(l, indent=0):
             for value in l:
                 if isinstance(value, dict):
-                    pr_dict(value, indent+1)
+                    pretty_dict(value, indent+1)
                 elif isinstance(value, list):
-                    pr_list(value, indent+1)
+                    pretty_list(value, indent+1)
                 else:
                     color_print(f"{PrintUtil.indent_symbol*(indent+1)}{value}")
 
-        def pr_print(obj):
+        def pretty_print(obj):
             if isinstance(obj, dict):
-                pr_dict(obj,0)
+                pretty_dict(obj,0)
             elif isinstance(obj, list):
-                pr_list(obj,0)
+                pretty_list(obj,0)
             else:
                 PrintUtil.log_debug(obj)
-        options.debug_mode and pr_print(msg)
+
+        options.debug_mode and pretty_print(msg)
+
+#local_storage_path = '/etc/wizzardes'
+local_storage_path = ''
+
+# query parser logic
+class Tokens:
+    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT = range(16)
+
+    CONVERSION_OPERATOR = '->' 
+    DEFAULT_SCENARIO_TOKEN = '*'
+    AND_OPERATOR = '&'
+
+    UNARY_OPERATORS = [SWITCH, WAIT]
+
+    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT] 
+    RANGE_FILTERS = [ALL, FIRST, LAST]
+    DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
+    SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
+    TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK, CREATE]
+
+    @staticmethod
+    def get(tokenName):
+        try:
+            if tokenName in Tokens.SPECIAL_OPERATOR:
+                return tokenName
+            return getattr(Tokens, tokenName)
+        except AttributeError:
+            return None
+
+    @staticmethod
+    def contains_value(tokenName):
+        tokenType = Tokens.get(tokenName)
+        return tokenType in Tokens.TOKENS_WITH_VALUES
+
+    @staticmethod
+    def is_executable(tokenName):
+        tokenType = Tokens.get(tokenName)
+        return tokenType in Tokens.EXECUTABLE
+    
+    @staticmethod
+    def is_unary(tokenName):
+        tokenType = Tokens.get(tokenName)
+        return tokenType in Tokens.UNARY_OPERATORS
+
+    @staticmethod
+    def is_value_token(tokenName):
+        tokenType = Tokens.get(tokenName)
+        return tokenName != Tokens.CONVERSION_OPERATOR and tokenType == None
+
+class Utils:
+    @staticmethod
+    def dict_from_regex(target, reg):
+        return [m.groupdict() for m in reg.finditer(target)]
+
+    @staticmethod
+    def to_hex(s):
+        def zpad_hex(s):
+            return '0x' + s[2:].zfill(8)
+        return zpad_hex(str(hex(s)))
+    
+    @staticmethod
+    def wmctrl_status():
+        try:
+            with open(os.devnull, 'w') as null:
+                proc = Popen("wmctrl", stdout=null, stderr=null)
+                proc.communicate()
+            return True
+        except OSError:
+            return False
 
 epilog_msg = """
 Unary operators:
@@ -179,91 +249,40 @@ def get_params():
                     action="store")
     parser.add_argument("--debug-mode", help="Execute in debug mode",
                     action="store_true")
+    parser.add_argument("--use-wmctrl", help="Execute in debug mode",
+                    action="store_true")
 
     options = parser.parse_args()
     return options
 
 options = get_params()
 
-#local_storage_path = '/etc/wizzardes'
-local_storage_path = ''
-
-# query parser logic
-class Tokens:
-    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT = range(16)
-
-    CONVERSION_OPERATOR = '->' 
-    DEFAULT_SCENARIO_TOKEN = '*'
-    AND_OPERATOR = '&'
-
-    UNARY_OPERATORS = [SWITCH, WAIT]
-
-    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT] 
-    RANGE_FILTERS = [ALL, FIRST, LAST]
-    DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
-    SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
-    TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK, CREATE]
-
-    @staticmethod
-    def get(tokenName):
-        try:
-            if tokenName in Tokens.SPECIAL_OPERATOR:
-                return tokenName
-            return getattr(Tokens, tokenName)
-        except AttributeError:
-            return None
-
-    @staticmethod
-    def contains_value(tokenName):
-        tokenType = Tokens.get(tokenName)
-        return tokenType in Tokens.TOKENS_WITH_VALUES
-
-    @staticmethod
-    def is_executable(tokenName):
-        tokenType = Tokens.get(tokenName)
-        return tokenType in Tokens.EXECUTABLE
-    
-    @staticmethod
-    def is_unary(tokenName):
-        tokenType = Tokens.get(tokenName)
-        return tokenType in Tokens.UNARY_OPERATORS
-
-    @staticmethod
-    def is_value_token(tokenName):
-        tokenType = Tokens.get(tokenName)
-        return tokenName != Tokens.CONVERSION_OPERATOR and tokenType == None
-
-class Utils:
-    @staticmethod
-    def dict_from_regex(target, reg):
-        return [m.groupdict() for m in reg.finditer(target)]
-    @staticmethod
-    def to_hex(s):
-        def zpad_hex(s):
-            return '0x' + s[2:].zfill(8)
-        return zpad_hex(hex(s))
+if (options.use_wmctrl):
+    if (not Utils.wmctrl_status()):
+        PrintUtil.log_error("Seems, like `wmctrl` is not installed...")
+        exit(1)
 
 class WindowsManager(object):
     def get_windows_list(self):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
 
     def get_desktops_list(self):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
         
     def mv_to(self, windows_id, desktop_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
 
     def close(self, windows_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
     
     def switch(self, desktop_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
     
     def active(self, window_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
 
 # later should change data formats for windows info
-class EwmhUtils(WindowsManager):
+class XlibUtils(WindowsManager):
     def __init__(self, target_display = None, root = None):
         self.display = target_display or display.Display()
         self.root = self.display.screen().root
@@ -276,13 +295,13 @@ class EwmhUtils(WindowsManager):
     
     # <windowId> <desktopId> <pid> <client> <windowTitle>
     def get_windows_list(self):
-        target_windows = [ self.__create_window(w) for w in self.__get_property('_NET_CLIENT_LIST')]
+        target_windows = [ self.__create_window(w) for w in self.__get_property('_NET_CLIENT_LIST', False) ]
         windows_list = list() 
         for window in target_windows:
             window_data_object = {}
             window_data_object['windowId'] = Utils.to_hex(window.id)
             for key, value in self.required_windows_fieds.items():  
-                value = self.__get_property(value, window)
+                value = self.__get_property(value, target=window)
                 window_data_object[key] = value
             windows_list.append(window_data_object)
         return windows_list
@@ -309,16 +328,16 @@ class EwmhUtils(WindowsManager):
         return desktops_list
 
     def mv_to(self, windows_id, desktop_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
 
     def close(self, windows_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
     
     def switch(self, desktop_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
     
     def active(self, window_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        raise NotAvailableOperation("Not implemented")
 
     def __parse_value(self, value, single):
         value = value.decode() if isinstance(value, (bytes, bytearray)) else value
@@ -333,42 +352,47 @@ class EwmhUtils(WindowsManager):
     def __create_window(self, window_id):
         return self.display.create_resource_object('window', window_id) if window_id is not None else None
 
-class WmctrlUtils:
+class WmctrlUtils(WindowsManager):
     # <windowId> <desktopId> <pid> <client> <windowTitle>
     def get_windows_list(self):
-        output_str = self.execute_task(['-lp'])
+        output_str = self.__execute_wmctrl(['-lp'])
         regex_window_list = re.compile(r'(?P<windowId>0x[0-9A-Fa-f]{8})\s+(?P<desktopId>[0-9]+)\s+(?P<pid>[0-9]+)\s+(?P<client>[A-Za-z0-9]+)\s+(?P<windowTitle>.+)', re.MULTILINE)
         return Utils.dict_from_regex(output_str, regex_window_list)
 
     # <desktopId> <active> <geometry> <viewport> <workAreaGeometry> <workAreaResolution> <title>
     def get_desktops_list(self):
-        output_str = self.execute_task(['-d'])  
+        output_str = self.__execute_wmctrl(['-d'])  
         regex_desktop_list = re.compile(r'(?P<desktopId>[0-9]+)\s+(?P<active>[-*]{1})\s+DG:\s+(?P<geometry>[0-9]{1,5}x[0-9]{1,5})\s+VP:\s+(?P<viewPort>N/A|(?:[0-9]{1,5}\,[0-9]{1,5}))\s+WA:\s+(?P<workAreaGeometry>[0-9]{1,5}\,[0-9]{1,5})\s+(?P<workAreaResolution>[0-9]{1,5}x[0-9]{1,5})\s+(?P<title>[\s\w/]+\n)', re.MULTILINE)
         return Utils.dict_from_regex(output_str, regex_desktop_list)
     
-    def execute_task(self, task):
+    def __execute_wmctrl(self, task):
         task = ['wmctrl'] + task
         PrintUtil.log_debug(f"Executing wmctrl task: {task}")
         p = Popen(task, stdin=PIPE, stdout=PIPE, stderr=PIPE)
         output, err = p.communicate()
         rc = p.returncode
         if rc == 1:
-            raise WmctrlExeption(f"Can't execute `wmctrl` command {' '.join(task)}, exit code: `1`, error: {err.decode()}")
+            raise WmctrlExeption(f"Can't execute `wmctrl` command '{' '.join(task)}', exit code: `1`, error: {err.decode()}")
         return output.decode("utf-8")
     
-    def mv_to(self, windows_id, desktop_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+    def mv_to(self, window_id, desktop_id):
+        command = ['-ir', window_id, '-t', desktop_id]
+        self.__execute_wmctrl(command)
 
-    def close(self, windows_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+    def close(self, window_id):
+        command = ['-ic', window_id]
+        self.__execute_wmctrl(command)
     
     def switch(self, desktop_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        command = ['-s' ,desktop_id]
+        self.__execute_wmctrl(command)
     
     def active(self, window_id):
-        raise NotAvailableOperation("Not implemented in manager impl")
+        command = ['-ia', window_id]
+        self.__execute_wmctrl(command)
 
-wmctrl_utils = WmctrlUtils()
+windows_manager = WmctrlUtils() if options.use_wmctrl else XlibUtils()
+PrintUtil.log_debug(f"Selected windows manger: {windows_manager}")
 
 class RangeFilters:
     filter_all = lambda arr: arr
@@ -402,14 +426,13 @@ class Validators:
     @staticmethod
     def is_desktop_is_valid(id):
         try:
-            desktop_list = wmctrl_utils.get_desktops_list()
+            desktop_list = windows_manager.get_desktops_list()
             reg = r"[0-9]{1,5}"
             return False if re.fullmatch(reg,id) is None else int(id) < len(desktop_list)
         except ValueError:
             raise WrongQueryParameterException(f"Can't convert {id} to integer...")
 
 class AppRunnersLoader:
-
     def __init__(self):
         self.app_runners_path = os.path.join(local_storage_path, "app_runners") 
         PrintUtil.log_debug(f"App runners path: {self.app_runners_path}")
@@ -435,195 +458,207 @@ class AppRunnersLoader:
 
 app_runners = AppRunnersLoader() 
 
-def all_token_execute(state):
-    state['range_filter_processor'] = RangeFilters.filter_all
-    PrintUtil.log_debug(f"Executing 'ALL' token, append range_filter_processor as {state['range_filter_processor']}")
-    return state
+class TokenExecutors:
+    @staticmethod    
+    def all_token_execute(state):
+        state['range_filter_processor'] = RangeFilters.filter_all
+        PrintUtil.log_debug(f"Executing 'ALL' token, append range_filter_processor as {state['range_filter_processor']}")
+        return state
 
-def first_token_execute(state):
-    state['range_filter_processor'] = RangeFilters.filter_first
-    PrintUtil.log_debug(f"Executing 'FIRST' token, append range_filter_processor as {state['range_filter_processor']}")
-    return state
+    @staticmethod
+    def first_token_execute(state):
+        state['range_filter_processor'] = RangeFilters.filter_first
+        PrintUtil.log_debug(f"Executing 'FIRST' token, append range_filter_processor as {state['range_filter_processor']}")
+        return state
 
-def last_token_execute(state):
-    state['range_filter_processor'] = RangeFilters.filter_last
-    PrintUtil.log_debug(f"Executing 'LAST' token, append range_filter_processor as {state['range_filter_processor']}")
-    return state
+    @staticmethod
+    def last_token_execute(state):
+        state['range_filter_processor'] = RangeFilters.filter_last
+        PrintUtil.log_debug(f"Executing 'LAST' token, append range_filter_processor as {state['range_filter_processor']}")
+        return state
 
-def id_token_execute(state):
-    if (not Validators.is_window_id_valid(state['value'])): 
-        raise WrongQueryParameterException(f"Not valid window id `{state['value']}` in `BY ID() filter`")
-    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_id, state['value'])
-    PrintUtil.log_debug(f"Executing 'ID' token, append data_filter_processor as {state['data_filter_processor']}")
-    return state
+    @staticmethod
+    def id_token_execute(state):
+        if (not Validators.is_window_id_valid(state['value'])): 
+            raise WrongQueryParameterException(f"Not valid window id `{state['value']}` in `BY ID() filter`")
+        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_id, state['value'])
+        PrintUtil.log_debug(f"Executing 'ID' token, append data_filter_processor as {state['data_filter_processor']}")
+        return state
 
-def contains_token_execute(state):
-    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_contains, state['value'])
-    PrintUtil.log_debug(f"Executing 'CONTAINS' token, append data_filter_processor as {state['data_filter_processor']}")
-    return state
+    @staticmethod
+    def contains_token_execute(state):
+        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_contains, state['value'])
+        PrintUtil.log_debug(f"Executing 'CONTAINS' token, append data_filter_processor as {state['data_filter_processor']}")
+        return state
 
-def desk_token_execute(state):
-    if (not Validators.is_desktop_is_valid(state['value'])):
-        raise WrongQueryParameterException(f"Not valid desktop id `{state['value']}` in `BY DESK() filter`")
-    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_desk, state['value'])
-    PrintUtil.log_debug(f"Executing 'DESK' token, append data_filter_processor as {state['data_filter_processor']}")
-    return state
+    @staticmethod
+    def desk_token_execute(state):
+        if (not Validators.is_desktop_is_valid(state['value'])):
+            raise WrongQueryParameterException(f"Not valid desktop id `{state['value']}` in `BY DESK() filter`")
+        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_desk, state['value'])
+        PrintUtil.log_debug(f"Executing 'DESK' token, append data_filter_processor as {state['data_filter_processor']}")
+        return state
 
-def full_token_execute(state):
-    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_full, state['value'])
-    PrintUtil.log_debug(f"Executing 'FULL' token, append data_filter_processor as {state['data_filter_processor']}")
-    return state
+    @staticmethod
+    def full_token_execute(state):
+        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_full, state['value'])
+        PrintUtil.log_debug(f"Executing 'FULL' token, append data_filter_processor as {state['data_filter_processor']}")
+        return state
 
-def regex_token_execute(state):
-    state['data_filter_processor'] = FilterObject(DataFilters.filter_by_regex, state['value'])
-    PrintUtil.log_debug(f"Executing 'REGEX' token, append data_filter_processor as {state['data_filter_processor']}")
-    return state
+    @staticmethod
+    def regex_token_execute(state):
+        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_regex, state['value'])
+        PrintUtil.log_debug(f"Executing 'REGEX' token, append data_filter_processor as {state['data_filter_processor']}")
+        return state
 
-def mvto_token_execute(state):
-    PrintUtil.log_debug(f"Executing 'MV_TO' token, target list:")
-    PrintUtil.log_debug_object(state['target_list'])
-    for window in state['target_list']:
-        command = ['-ir', window['windowId'], '-t', state['value']]
-        wmctrl_utils.execute_task(command)
-        wait()
-    return state
-
-def mvseparate_token_execute(state):
-    PrintUtil.log_debug(f"Executing 'MV_SEPARATE' token")
-    state['desktopManager'].distributeWindows(state['target_list'], state['value'])
-    return state
-
-def close_token_execute(state):
-    PrintUtil.log_debug(f"Executing 'CLOSE' token, target list:")
-    PrintUtil.log_debug_object(state['target_list'])
-    command = ['-ic', 'windowId']
-    for window in state['target_list']:
-        command = ['-ic', window['windowId']]
-        wmctrl_utils.execute_task(command)
-        wait()
-    return state
-
-def switch_token_execute(desktop_id):
-    PrintUtil.log_debug(f"Executing 'SWITCH' token on desktop '{desktop_id}'")
-    if (not Validators.is_desktop_is_valid(desktop_id)):
-        raise WrongQueryParameterException(f"Not valid desktop id '{desktop_id}' in `SWITCH`, maybe desktop not yet created")
-    command = ['-s' ,desktop_id]
-    wmctrl_utils.execute_task(command)
-
-def wait_token_execute(seconds):
-    try:
-        default_seconds = 5
-        seconds = default_seconds if seconds == Tokens.DEFAULT_SCENARIO_TOKEN or int(seconds) < 0 else int(seconds)
-        PrintUtil.log_debug(f"Executing 'WAIT' token for '{seconds}' seconds")
-        sleep(seconds)
-    except ValueError:
-        raise ExecuteQueryException(f"Can't convert {seconds} to int")
-
-def active_token_execute(state):
-    target = state['target_list']
-    if len(target) != 1:
-        raise ExecuteQueryException(f"Can't set `ACTIVE` for {len(target)} windows, only single target...")
-    target = target[0]['windowId']
-    PrintUtil.log_debug(f"Executing 'ACTIVE' token, on <{target}> window")
-    if (not Validators.is_window_id_valid(target)):
-        raise WrongQueryParameterException(f"Not valid window id {target} for `ACTIVE`")
-    command = ['-ia', target]
-    wmctrl_utils.execute_task(command)
-    return state
-
-def conversion_token_execute(state):
-    PrintUtil.log_debug(f"Executing '->' token")
-    target_list = state['target_list'] if 'target_list' in state else wmctrl_utils.get_windows_list()
-    PrintUtil.log_debug(f"Decided target list :")
-    PrintUtil.log_debug_object(target_list)
-    if 'data_filter_processor' in state:
-        PrintUtil.log_debug(f"Detected data filter: {state['data_filter_processor']}")
-        target_list = state['data_filter_processor'].filter(target_list)
-        PrintUtil.log_debug(f"After data filter target list is:")
-        PrintUtil.log_debug_object(target_list)
-    if 'range_filter_processor' in state:
-        PrintUtil.log_debug(f"Detected range filter: {state['range_filter_processor']}")
-        target_list = state['range_filter_processor'](target_list)
-        PrintUtil.log_debug(f"After range filter target list is:")
-        PrintUtil.log_debug_object(target_list)
-    state['target_list'] = target_list
-    return state
-
-def create_token_execute(state):
-    def app_pids(app):
-        ps_cux_output = check_output(["ps", "cux"]).decode().split('\n')
-        target_procs = [proc for proc in ps_cux_output if app in proc]
-        if len(target_procs) == 0:
-            return []
-        pid_regex = re.compile(r'[A-Za-z\.\_\-]+\s+(?P<pid>[0-9]{1,7})\s+', re.MULTILINE)
-        pids = [ m['pid'] for m in pid_regex.finditer("\n".join(target_procs)) ]
-        return pids
-
-    app_runner = app_runners.get_runner(state['value'])
-    PrintUtil.log_debug(f"Executing 'CREATE' token, for '{app_runner}' runner")
-    
-    # take last proc pid in list
-    windows_snapshot = wmctrl_utils.get_windows_list()
-    windows_snapshot_count = len(windows_snapshot)
-    PrintUtil.log_debug(f"Taking windows snapshot, founded '{windows_snapshot_count}' windows")
-    PrintUtil.log_debug_object(windows_snapshot)
-    
-    '''
-        Method above would create background process with pid not like the parent process
-        So, for now using p.wait() for wait of ending of ui loading
-        os.system(f"{app_runner} &")
-    '''
-    p = Popen([app_runner], stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    p.wait()
-    rc = p.returncode
-    if rc == 1:
-        raise ExecuteQueryException(f"Can't execute runner '{app_runner}', exit code: `1`")
-
-    current_windows = wmctrl_utils.get_windows_list()
-    wait_lock = True
-    
-    pids = app_pids(app_runner)
-    if (len(pids) == 0):
-        raise ExecuteQueryException(f"Can't find PID for '{app_runner}, maybe process freezed and don't started'")
-    PrintUtil.log_debug(f"Finded {len(pids)} processes for '{app_runner}' runner")
-    PrintUtil.log_debug_object(pids)
-    pid = pids[-1]
-    PrintUtil.log_debug(f"Starting monitoring for the formation of '{app_runner}' window")
-    while wait_lock:
-        # wait for new windows opening
-        while windows_snapshot_count == len(current_windows):
-            current_windows = wmctrl_utils.get_windows_list()
+    @staticmethod
+    def mvto_token_execute(state):
+        PrintUtil.log_debug(f"Executing 'MV_TO' token, target list:")
+        PrintUtil.log_debug_object(state['target_list'])
+        for window in state['target_list']:
+            windows_manager.mv_to(window['windowId'], state['value'])
             wait()
-        # check for target window   
-        intersect = [ window for window in current_windows if (window not in windows_snapshot) ]
-        for window in intersect:
-            if window['pid'] == pid:
-                state['target_list'] = [ window ]
-                wait_lock = False
-                break
-        windows_snapshot = current_windows
+        return state
+
+    @staticmethod
+    def mvseparate_token_execute(state):
+        PrintUtil.log_debug(f"Executing 'MV_SEPARATE' token")
+        state['desktopManager'].distributeWindows(state['target_list'], state['value'])
+        return state
+
+    @staticmethod
+    def close_token_execute(state):
+        PrintUtil.log_debug(f"Executing 'CLOSE' token, target list:")
+        PrintUtil.log_debug_object(state['target_list'])
+        for window in state['target_list']:
+            windows_manager.close(window['windowId'])
+            wait()
+        return state
+
+    @staticmethod
+    def switch_token_execute(desktop_id):
+        PrintUtil.log_debug(f"Executing 'SWITCH' token on desktop '{desktop_id}'")
+        if (not Validators.is_desktop_is_valid(desktop_id)):
+            raise WrongQueryParameterException(f"Not valid desktop id '{desktop_id}' in `SWITCH`, maybe desktop not yet created")
+        windows_manager.switch(desktop_id)
+
+    @staticmethod
+    def wait_token_execute(seconds):
+        try:
+            default_seconds = 5
+            seconds = default_seconds if seconds == Tokens.DEFAULT_SCENARIO_TOKEN or int(seconds) < 0 else int(seconds)
+            PrintUtil.log_debug(f"Executing 'WAIT' token for '{seconds}' seconds")
+            sleep(seconds)
+        except ValueError:
+            raise ExecuteQueryException(f"Can't convert {seconds} to int")
+
+    @staticmethod
+    def active_token_execute(state):
+        target = state['target_list']
+        if len(target) != 1:
+            raise ExecuteQueryException(f"Can't set `ACTIVE` for {len(target)} windows, only single target...")
+        target = target[0]['windowId']
+        PrintUtil.log_debug(f"Executing 'ACTIVE' token, on <{target}> window")
+        if (not Validators.is_window_id_valid(target)):
+            raise WrongQueryParameterException(f"Not valid window id {target} for `ACTIVE`")
+        windows_manager.active(target)
+        return state
+
+    @staticmethod
+    def conversion_token_execute(state):
+        PrintUtil.log_debug(f"Executing '->' token")
+        target_list = state['target_list'] if 'target_list' in state else windows_manager.get_windows_list()
+        PrintUtil.log_debug(f"Decided target list :")
+        PrintUtil.log_debug_object(target_list)
+        if 'data_filter_processor' in state:
+            PrintUtil.log_debug(f"Detected data filter: {state['data_filter_processor']}")
+            target_list = state['data_filter_processor'].filter(target_list)
+            PrintUtil.log_debug(f"After data filter target list is:")
+            PrintUtil.log_debug_object(target_list)
+        if 'range_filter_processor' in state:
+            PrintUtil.log_debug(f"Detected range filter: {state['range_filter_processor']}")
+            target_list = state['range_filter_processor'](target_list)
+            PrintUtil.log_debug(f"After range filter target list is:")
+            PrintUtil.log_debug_object(target_list)
+        state['target_list'] = target_list
+        return state
+
+    @staticmethod
+    def create_token_execute(state):
+        def app_pids(app):
+            ps_cux_output = check_output(["ps", "cux"]).decode().split('\n')
+            target_procs = [proc for proc in ps_cux_output if app in proc]
+            if len(target_procs) == 0:
+                return []
+            pid_regex = re.compile(r'[A-Za-z\.\_\-]+\s+(?P<pid>[0-9]{1,7})\s+', re.MULTILINE)
+            pids = [ m['pid'] for m in pid_regex.finditer("\n".join(target_procs)) ]
+            return pids
+
+        app_runner = app_runners.get_runner(state['value'])
+        PrintUtil.log_debug(f"Executing 'CREATE' token, for '{app_runner}' runner")
+        
+        # take last proc pid in list
+        windows_snapshot = windows_manager.get_windows_list()
         windows_snapshot_count = len(windows_snapshot)
-    PrintUtil.log_debug(f"Finded target window for '{app_runner}'")
-    PrintUtil.log_debug_object(state['target_list'])
-    return state
+        PrintUtil.log_debug(f"Taking windows snapshot, founded '{windows_snapshot_count}' windows")
+        PrintUtil.log_debug_object(windows_snapshot)
+        
+        '''
+            Method above would create background process with pid not like the parent process
+            So, for now using p.wait() for wait of ending of ui loading
+            os.system(f"{app_runner} &")
+        '''
+        p = Popen([app_runner], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        p.wait()
+        rc = p.returncode
+        if rc == 1:
+            raise ExecuteQueryException(f"Can't execute runner '{app_runner}', exit code: `1`")
+
+        current_windows = windows_manager.get_windows_list()
+        wait_lock = True
+        
+        pids = app_pids(app_runner)
+        if (len(pids) == 0):
+            raise ExecuteQueryException(f"Can't find PID for '{app_runner}, maybe process freezed and don't started'")
+        PrintUtil.log_debug(f"Finded {len(pids)} processes for '{app_runner}' runner")
+        PrintUtil.log_debug_object(pids)
+        pid = pids[-1]
+        PrintUtil.log_debug(f"Starting monitoring for the formation of '{app_runner}' window")
+        while wait_lock:
+            # wait for new windows opening
+            while windows_snapshot_count == len(current_windows):
+                current_windows = windows_manager.get_windows_list()
+                wait()
+            # check for target window   
+            intersect = [ window for window in current_windows if (window not in windows_snapshot) ]
+            for window in intersect:
+                if window['pid'] == pid:
+                    state['target_list'] = [ window ]
+                    wait_lock = False
+                    break
+            windows_snapshot = current_windows
+            windows_snapshot_count = len(windows_snapshot)
+        PrintUtil.log_debug(f"Finded target window for '{app_runner}'")
+        PrintUtil.log_debug_object(state['target_list'])
+        return state
 
 EXECUTOR_FUNCS = {
-    Tokens.ALL : all_token_execute,
-    Tokens.FIRST : first_token_execute,
-    Tokens.LAST : last_token_execute,
-    Tokens.ID : id_token_execute,
-    Tokens.CONTAINS: contains_token_execute,
-    Tokens.FULL: full_token_execute,
-    Tokens.REGEX: regex_token_execute,
-    Tokens.SWITCH: switch_token_execute,
-    Tokens.ACTIVE: active_token_execute,
-    Tokens.MV_SEPARATE: mvseparate_token_execute,
-    Tokens.MV_TO: mvto_token_execute,
-    Tokens.CLOSE: close_token_execute,
-    Tokens.DESK: desk_token_execute,
-    Tokens.CONVERSION_OPERATOR: conversion_token_execute,
-    Tokens.CREATE: create_token_execute,
-    Tokens.WAIT: wait_token_execute
+    Tokens.ALL : TokenExecutors.all_token_execute,
+    Tokens.FIRST : TokenExecutors.first_token_execute,
+    Tokens.LAST : TokenExecutors.last_token_execute,
+    Tokens.ID : TokenExecutors.id_token_execute,
+    Tokens.CONTAINS: TokenExecutors.contains_token_execute,
+    Tokens.FULL: TokenExecutors.full_token_execute,
+    Tokens.REGEX: TokenExecutors.regex_token_execute,
+    Tokens.SWITCH: TokenExecutors.switch_token_execute,
+    Tokens.ACTIVE: TokenExecutors.active_token_execute,
+    Tokens.MV_SEPARATE: TokenExecutors.mvseparate_token_execute,
+    Tokens.MV_TO: TokenExecutors.mvto_token_execute,
+    Tokens.CLOSE: TokenExecutors.close_token_execute,
+    Tokens.DESK: TokenExecutors.desk_token_execute,
+    Tokens.CONVERSION_OPERATOR: TokenExecutors.conversion_token_execute,
+    Tokens.CREATE: TokenExecutors.create_token_execute,
+    Tokens.WAIT: TokenExecutors.wait_token_execute
 }
 
 class DesktopManager:
@@ -638,9 +673,8 @@ class DesktopManager:
 
     def distributeWindowsByRange(self, targets_list, ids_list):
         for index, desktop_id in enumerate(ids_list):
-            command = ['-ir', targets_list[index]['windowId'], '-t', str(desktop_id)]
             PrintUtil.log_debug(f"Moving window <{targets_list[index]['windowId']}> to {desktop_id}")
-            wmctrl_utils.execute_task(command)
+            windows_manager.mv_to(targets_list[index]['windowId'], str(desktop_id))
             wait()
 
     '''
@@ -675,7 +709,7 @@ class QueryExecutor:
     def __init__(self, tokens, query):
         self.query = query
         self.tokens = tokens
-        desktop_list = wmctrl_utils.get_desktops_list()
+        desktop_list = windows_manager.get_desktops_list()
         PrintUtil.log_debug(f"Desktop list on moment, when query executor was created :")
         PrintUtil.log_debug_object(desktop_list)
         self.state['desktopManager'] = DesktopManager(desktop_list)
@@ -790,19 +824,6 @@ class TokenParser:
 
 # main script
 
-def wmctrl_status():
-    try:
-        with open(os.devnull, 'w') as null:
-            proc = Popen("wmctrl", stdout=null, stderr=null)
-            proc.communicate()
-        return True
-    except OSError:
-        return False
-
-if (not wmctrl_status()):
-    PrintUtil.log_error("Seems, like `wmctrl` is not installed...")
-    exit(1)
-
 def execute_single_query(query):
     PrintUtil.log_info("Execute single query: %s"%query)
     tokenizer = TokenParser(query)
@@ -825,7 +846,6 @@ def execute_default_query_file():
 
 
 def main():
-    PrintUtil.log_debug("`debug mode` is enabled")
     execute_single_query(options.single_query)
 
 if __name__ == "__main__":

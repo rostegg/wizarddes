@@ -21,13 +21,13 @@ class XlibManager:
     
     # <windowId> <desktopId> <pid> <client> <windowTitle>
     def get_windows_list(self):
-        target_windows = [ self.__create_window(w) for w in self.__get_property('_NET_CLIENT_LIST')]
+        target_windows = [ self.__create_window(w) for w in self.__get_property('_NET_CLIENT_LIST',False)]
         windows_list = list() 
         for window in target_windows:
             window_data_object = {}
             window_data_object['windowId'] = to_hex(window.id)
             for key, value in self.required_windows_fieds.items():  
-                value = self.__get_property(value, window)
+                value = self.__get_property(value, target=window)
                 window_data_object[key] = value
             windows_list.append(window_data_object)
         return windows_list
@@ -67,7 +67,8 @@ class XlibManager:
         return self.display.create_resource_object('window', window_id) if window_id is not None else None
 
 manager = XlibManager()
-print(manager.get_desktops_list())
+print(manager.get_windows_list())
+
 
 '''wins = ewmh.getClientList()
 print(wins[-1].get_full_property(ewmh.display.get_atom("_NET_WM_PID"), X.AnyPropertyType).value)

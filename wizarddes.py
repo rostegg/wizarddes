@@ -96,9 +96,9 @@ class PrintUtil:
 
         def pretty_print(obj):
             if isinstance(obj, dict):
-                pretty_dict(obj,0)
+                pretty_dict(obj)
             elif isinstance(obj, list):
-                pretty_list(obj,0)
+                pretty_list(obj)
             else:
                 PrintUtil.log_debug(obj)
 

@@ -102,51 +102,9 @@ class XlibManager:
     def __create_window(self, window_id):
         return self.display.create_resource_object('window', window_id) if window_id is not None else None
 
-manager = XlibManager()
+#manager = XlibManager()
 #manager.get_windows_list()
 #manager.mv_to('0x04400007', '0')
 #manager.active('0x03200003')
 #manager.switch('1')
 #manager.close('0x04400007')
-
-'''
-"""
-
-self._setProperty('_NET_ACTIVE_WINDOW', [1, X.CurrentTime, win.id],
-                          win)
-        Move the window to the desired desktop by changing the property
-        _NET_WM_DESKTOP.
-        :param win: the window object
-        :param i: desired desktop number
-        """
-        self._setProperty('_NET_WM_DESKTOP', [i, 1], win)
-'''
-
-'''wins = ewmh.getClientList()
-print(wins[-1].get_full_property(ewmh.display.get_atom("_NET_WM_PID"), X.AnyPropertyType).value)
-print(wins[-1].get_full_property(ewmh.display.get_atom("WM_CLIENT_MACHINE"), X.AnyPropertyType).value)
-print(wins[-1].get_full_property(ewmh.display.get_atom("_NET_WM_DESKTOP"), X.AnyPropertyType).value)
-print(wins[-1].get_full_property(ewmh.display.get_atom("_WIN_WORKSPACE"), X.AnyPropertyType))
-print(wins[-1].get_full_property(ewmh.display.get_atom("WM_NAME"), X.AnyPropertyType))
-print(wins[-1].get_full_property(ewmh.display.get_atom("_NET_WM_NAME"), X.AnyPropertyType).value)
-
-print(zpad_hex(hex(wins[-1].id)))
-'''
-
-'''
- /* desktop ID */
-if ((desktop = (unsigned long *)get_property(disp, client_list[i],
-XA_CARDINAL, "_NET_WM_DESKTOP", NULL)) == NULL) {
-desktop = (unsigned long *)get_property(disp, client_list[i],
-        XA_CARDINAL, "_WIN_WORKSPACE", NULL);
-}
-
-/* client machine */
-client_machine = get_property(disp, client_list[i],
-XA_STRING, "WM_CLIENT_MACHINE", NULL);
-
-/* pid */
-pid = (unsigned long *)get_property(disp, client_list[i],
-XA_CARDINAL, "_NET_WM_PID", NULL);
-
-'''

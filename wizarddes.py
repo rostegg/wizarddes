@@ -109,7 +109,7 @@ local_storage_path = ''
 
 # query parser logic
 class Tokens:
-    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT = range(16)
+    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT, RANGE = range(17)
 
     CONVERSION_OPERATOR = '->' 
     DEFAULT_SCENARIO_TOKEN = '*'
@@ -117,8 +117,8 @@ class Tokens:
 
     UNARY_OPERATORS = [SWITCH, WAIT]
 
-    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT] 
-    RANGE_FILTERS = [ALL, FIRST, LAST]
+    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE] 
+    RANGE_FILTERS = [ALL, FIRST, LAST, RANGE]
     DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
     SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
     TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK, CREATE]
@@ -156,6 +156,12 @@ class Utils:
     @staticmethod
     def dict_from_regex(target, reg):
         return [m.groupdict() for m in reg.finditer(target)]
+
+    @staticmethod
+    def assert_filters_list(state):
+        if 'data_filter_processor' not in state:
+            state['data_filter_processor'] = list() 
+        return state
 
     @staticmethod
     def to_hex(s):
@@ -481,6 +487,7 @@ class AppRunnersLoader:
 app_runners = AppRunnersLoader() 
 
 class TokenExecutors:
+    # range filters
     @staticmethod    
     def all_token_execute(state):
         state['range_filter_processor'] = RangeFilters.filter_all
@@ -499,17 +506,22 @@ class TokenExecutors:
         PrintUtil.log_debug(f"Executing 'LAST' token, append range_filter_processor as {state['range_filter_processor']}")
         return state
 
+    # data filters
     @staticmethod
     def id_token_execute(state):
         if (not Validators.is_window_id_valid(state['value'])): 
             raise WrongQueryParameterException(f"Not valid window id `{state['value']}` in `BY ID() filter`")
-        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_id, state['value'])
+        filter_object = FilterObject(DataFilters.filter_by_id, state['value'])
+        state = Utils.assert_filters_list(state)
+        state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'ID' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
 
     @staticmethod
     def contains_token_execute(state):
-        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_contains, state['value'])
+        filter_object = FilterObject(DataFilters.filter_by_contains, state['value'])
+        state = Utils.assert_filters_list(state)
+        state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'CONTAINS' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
 
@@ -517,22 +529,29 @@ class TokenExecutors:
     def desk_token_execute(state):
         if (not Validators.is_desktop_is_valid(state['value'])):
             raise WrongQueryParameterException(f"Not valid desktop id `{state['value']}` in `BY DESK() filter`")
-        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_desk, state['value'])
+        filter_object = FilterObject(DataFilters.filter_by_desk, state['value'])
+        state = Utils.assert_filters_list(state)
+        state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'DESK' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
 
     @staticmethod
     def full_token_execute(state):
-        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_full, state['value'])
+        filter_object = FilterObject(DataFilters.filter_by_full, state['value'])
+        state = Utils.assert_filters_list(state)
+        state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'FULL' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
 
     @staticmethod
     def regex_token_execute(state):
-        state['data_filter_processor'] = FilterObject(DataFilters.filter_by_regex, state['value'])
+        filter_object = FilterObject(DataFilters.filter_by_regex, state['value'])
+        state = Utils.assert_filters_list(state)
+        state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'REGEX' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
 
+    # actions
     @staticmethod
     def mvto_token_execute(state):
         PrintUtil.log_debug(f"Executing 'MV_TO' token, target list:")
@@ -594,7 +613,8 @@ class TokenExecutors:
         PrintUtil.log_debug_object(target_list)
         if 'data_filter_processor' in state:
             PrintUtil.log_debug(f"Detected data filter: {state['data_filter_processor']}")
-            target_list = state['data_filter_processor'].filter(target_list)
+            for filter_object in state['data_filter_processor']:
+                target_list = filter_object.filter(target_list)
             PrintUtil.log_debug(f"After data filter target list is:")
             PrintUtil.log_debug_object(target_list)
         if 'range_filter_processor' in state:

@@ -244,7 +244,12 @@ Queries examples:
 
 def get_params():
     parser = argparse.ArgumentParser(description="Automatize your desktop management", epilog=epilog_msg, formatter_class=RawTextHelpFormatter)
-    parser.add_argument('scenario_name', type=str, help=f"Name of rules file in '{local_storage_path}' folder", nargs='?', default='rules')
+    parser.add_argument('scenario_name', type=str, help=f"Name of rules file in '{local_storage_path}' folder",
+                    nargs='?', default='rules')
+    parser.add_argument("--wait-process-timeout", type=int, help="Timeout for wait 'CREATE' process in seconds (5 by default)",
+                    action="store", default=5)
+    parser.add_argument("--queries", help="Execute queries, separated by `;;`",
+                    action="store")
     parser.add_argument("--single-query", help="Execute single query",
                     action="store")
     parser.add_argument("--query-file", help="Full path to query file",
@@ -253,8 +258,6 @@ def get_params():
                     action="store_true")
     parser.add_argument("--use-wmctrl", help="Use `wmctrl` util instead of xlib",
                     action="store_true")
-    parser.add_argument("--queries", help="Execute queries, separated by `;;`",
-                    action="store")
     options = parser.parse_args()
     return options
 
@@ -638,11 +641,9 @@ class TokenExecutors:
     @staticmethod
     def create_token_execute(state):
         # timeout for long running processes
-        timeout = 5
-        # should use aux??
         def app_pids(app):
             # need check for fullpath executable, like /usr/bin/script-name and grep by last part (script-name)
-            ps_cux_output = check_output(["ps", "cux"]).decode().split('\n')
+            ps_cux_output = check_output(["ps", "aux"]).decode().split('\n')
             # determine, if app runners is complex and contains global path 
             target_app = app.split(' ')[0]
             target_app = target_app.split('/')[-1]
@@ -669,7 +670,8 @@ class TokenExecutors:
         '''
         p = Popen(app_runner.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE)
         try:
-            p.wait(timeout=timeout)
+            PrintUtil.log_debug(f"Wait timeout set to {options.wait_process_timeout}")
+            p.wait(timeout=options.wait_process_timeout)
         except TimeoutExpired:
             PrintUtil.log_warn(f"Process {app_runner} is still alive, well, lets try to catch him (or use 'FORCE_CREATE -> WAIT' query for singlethread processes)")
         rc = p.returncode
@@ -685,7 +687,7 @@ class TokenExecutors:
         PrintUtil.log_debug(f"Finded {len(pids)} processes for '{app_runner}' runner")
         PrintUtil.log_debug_object(pids)
         # not sure about child pid. but for now it's work fine, maybe should try to obtain more info?
-        pid = pids[0]
+        #pid = pids[0]
         PrintUtil.log_debug(f"Starting monitoring for the formation of '{app_runner}' window")
         while wait_lock:
             # wait for new windows opening
@@ -695,7 +697,7 @@ class TokenExecutors:
             # check for target window   
             intersect = [ window for window in current_windows if (window not in windows_snapshot) ]
             for window in intersect:
-                if window['pid'] == pid:
+                if window['pid'] in pids:
                     state['target_list'] = [ window ]
                     wait_lock = False
                     break

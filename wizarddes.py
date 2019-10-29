@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 
+import re, os, argparse, datetime
 from subprocess import Popen, PIPE, check_output, TimeoutExpired
-import re, os, argparse
 from argparse import RawTextHelpFormatter
 from time import sleep
 from array import array
-import datetime
 
-#local_storage_path = '/etc/wizzardes'
-local_storage_path = ''
+local_storage_path = '/etc/wizzardes'
+
 # exceptions
 class ParseTokenException(Exception):
     pass
@@ -112,7 +111,7 @@ class Tokens:
 
     UNARY_OPERATORS = [SWITCH]
 
-    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE, FORCE_CREATE] 
+    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE, FORCE_CREATE, BY] 
     RANGE_FILTERS = [ALL, FIRST, LAST, RANGE]
     DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
     SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
@@ -518,11 +517,14 @@ class TokenExecutors:
 
     # data filters
     @staticmethod
+    def by_token_execute(state):
+        return Utils.assert_filters_list(state)
+
+    @staticmethod
     def id_token_execute(state):
         if (not Validators.is_window_id_valid(state['value'])): 
             raise WrongQueryParameterException(f"Not valid window id `{state['value']}` in `BY ID() filter`")
         filter_object = FilterObject(DataFilters.filter_by_id, state['value'])
-        state = Utils.assert_filters_list(state)
         state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'ID' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
@@ -530,7 +532,6 @@ class TokenExecutors:
     @staticmethod
     def contains_token_execute(state):
         filter_object = FilterObject(DataFilters.filter_by_contains, state['value'])
-        state = Utils.assert_filters_list(state)
         state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'CONTAINS' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
@@ -540,7 +541,6 @@ class TokenExecutors:
         if (not Validators.is_desktop_is_valid(state['value'])):
             raise WrongQueryParameterException(f"Not valid desktop id `{state['value']}` in `BY DESK() filter`")
         filter_object = FilterObject(DataFilters.filter_by_desk, state['value'])
-        state = Utils.assert_filters_list(state)
         state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'DESK' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
@@ -548,7 +548,6 @@ class TokenExecutors:
     @staticmethod
     def full_token_execute(state):
         filter_object = FilterObject(DataFilters.filter_by_full, state['value'])
-        state = Utils.assert_filters_list(state)
         state['data_filter_processor'] += [ filter_object ]
         PrintUtil.log_debug(f"Executing 'FULL' token, append data_filter_processor as {state['data_filter_processor']}")
         return state
@@ -732,7 +731,8 @@ EXECUTOR_FUNCS = {
     Tokens.CONVERSION_OPERATOR: TokenExecutors.conversion_token_execute,
     Tokens.CREATE: TokenExecutors.create_token_execute,
     Tokens.WAIT: TokenExecutors.wait_token_execute,
-    Tokens.FORCE_CREATE: TokenExecutors.force_create_token_execute
+    Tokens.FORCE_CREATE: TokenExecutors.force_create_token_execute,
+    Tokens.BY: TokenExecutors.by_token_execute
 }
 
 class DesktopManager:

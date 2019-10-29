@@ -338,10 +338,12 @@ class XlibUtils(WindowsManager):
     def mv_to(self, window_id, desktop_id):
         window = self.__create_window(int(window_id, 16))
         self.__set_property('_NET_WM_DESKTOP', [int(desktop_id), 1], target=window)
+        self.__flush()
 
     def close(self, window_id):
         window = self.__create_window(int(window_id, 16))
         self.__set_property('_NET_CLOSE_WINDOW', [X.CurrentTime, 1], target=window)
+        self.__flush()
 
     def active(self, window_id):
         window_id = int(window_id, 16)
@@ -349,10 +351,12 @@ class XlibUtils(WindowsManager):
         target_desktop = self.__get_property('_NET_WM_DESKTOP', target = window)
         self.switch(target_desktop)
         self.__set_property('_NET_ACTIVE_WINDOW', [1, X.CurrentTime, window_id], target=window)
+        self.__flush()
 
     def switch(self, desktop_id):
         desktop_id = int(desktop_id)
         self.__set_property('_NET_CURRENT_DESKTOP', [desktop_id, X.CurrentTime])
+        self.__flush()
 
     def __parse_value(self, value, single):
         value = value.decode() if isinstance(value, (bytes, bytearray)) else value
@@ -372,6 +376,8 @@ class XlibUtils(WindowsManager):
         mask = (X.SubstructureRedirectMask | X.SubstructureNotifyMask)
             
         self.display.send_event(self.root, ev, event_mask=mask)
+
+    def __flush(self):
         self.display.flush()
 
     def __get_property(self, atom_type, single = True,target = None):

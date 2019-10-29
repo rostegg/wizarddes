@@ -560,8 +560,10 @@ class TokenExecutors:
     def mvto_token_execute(state):
         PrintUtil.log_debug(f"Executing 'MV_TO' token, target list:")
         PrintUtil.log_debug_object(state['target_list'])
+        # select last desktop if value is DEFAULT_SCENARIO_TOKEN 
+        target_desktop = state['value'] if state['value'] != Tokens.DEFAULT_SCENARIO_TOKEN else str(len(state['desktopManager'].desktop_list)-1)
         for window in state['target_list']:
-            windows_manager.mv_to(window['windowId'], state['value'])
+            windows_manager.mv_to(window['windowId'], target_desktop)
             wait()
         return state
 

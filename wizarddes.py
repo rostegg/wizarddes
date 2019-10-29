@@ -100,8 +100,7 @@ class PrintUtil:
 
         options.debug_mode and pretty_print(msg)
 
-#local_storage_path = '/etc/wizzardes'
-local_storage_path = ''
+local_storage_path = '/etc/wizzardes'
 
 # query parser logic
 class Tokens:
@@ -245,15 +244,17 @@ Queries examples:
 
 def get_params():
     parser = argparse.ArgumentParser(description="Automatize your desktop management", epilog=epilog_msg, formatter_class=RawTextHelpFormatter)
+    parser.add_argument('scenario_name', type=str, help=f"Name of rules file in '{local_storage_path}' folder", nargs='?', default='rules')
     parser.add_argument("--single-query", help="Execute single query",
                     action="store")
-    parser.add_argument("--query-file", help="Path to query file",
+    parser.add_argument("--query-file", help="Full path to query file",
                     action="store")
     parser.add_argument("--debug-mode", help="Execute in debug mode",
                     action="store_true")
-    parser.add_argument("--use-wmctrl", help="Execute in debug mode",
+    parser.add_argument("--use-wmctrl", help="Use `wmctrl` util instead of xlib",
                     action="store_true")
-
+    parser.add_argument("--queries", help="Execute queries, separated by `;;`",
+                    action="store")
     options = parser.parse_args()
     return options
 
@@ -799,7 +800,6 @@ class QueryExecutor:
         executor(self.tokens[1])
     
 class TokenParser:
-
     def __init__(self, expression):
         try:
             self.expression = expression
@@ -813,6 +813,7 @@ class TokenParser:
     def execute(self):
         try:
             self.query_executor.execute()
+            PrintUtil.log_success(f"Successfully executed '{self.expression}' query")
         except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult, NotAvailableOperatioException) as ex:
             PrintUtil.log_error(f"Error occurring, while executing `{self.expression}`:")
             PrintUtil.log_error(str(ex))
@@ -872,6 +873,10 @@ def execute_single_query(query):
     tokenizer = TokenParser(query)
     tokenizer.execute()
 
+def execute_queries(queries):
+    # split by ;; and execute
+    pass
+
 def parse_query_file(file_path):
     return open(file_path).read().splitlines()
 
@@ -884,12 +889,15 @@ def execute_rules_from_frile(file_path):
         PrintUtil.log_error("Can't read %s query file, check if it exist or have righ permissions")
         exit(1)
 
-def execute_default_query_file():
-    execute_rules_from_frile(f"{local_storage_path}/rules.txt")
-
-
 def main():
-    execute_single_query(options.single_query)
+    if options.single_query:
+        execute_single_query(options.single_query)
+    elif options.queries:
+        execute_queries(options.queries)
+    elif options.query_file:
+        execute_rules_from_frile(options.query_file)
+    else:
+        execute_rules_from_frile(os.path.join(local_storage_path, options.scenario_name))
 
 if __name__ == "__main__":
     main()

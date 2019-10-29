@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
-from subprocess import Popen, PIPE, check_output
+from subprocess import Popen, PIPE, check_output, TimeoutExpired
 import re, os, argparse
 from argparse import RawTextHelpFormatter
 from time import sleep
 from array import array
 import datetime
 
-local_storage_path = '/etc/wizzardes'
-
+#local_storage_path = '/etc/wizzardes'
+local_storage_path = ''
 # exceptions
 class ParseTokenException(Exception):
     pass
@@ -637,10 +637,16 @@ class TokenExecutors:
 
     @staticmethod
     def create_token_execute(state):
+        # timeout for long running processes
+        timeout = 5
+        # should use aux??
         def app_pids(app):
             # need check for fullpath executable, like /usr/bin/script-name and grep by last part (script-name)
             ps_cux_output = check_output(["ps", "cux"]).decode().split('\n')
-            target_procs = [proc for proc in ps_cux_output if app in proc]
+            # determine, if app runners is complex and contains global path 
+            target_app = app.split(' ')[0]
+            target_app = target_app.split('/')[-1]
+            target_procs = [proc for proc in ps_cux_output if target_app in proc]
             if len(target_procs) == 0:
                 return []
             pid_regex = re.compile(r'[A-Za-z\.\_\-]+\s+(?P<pid>[0-9]{1,7})\s+', re.MULTILINE)
@@ -662,7 +668,10 @@ class TokenExecutors:
             os.system(f"{app_runner} &")
         '''
         p = Popen(app_runner.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE)
-        p.wait()
+        try:
+            p.wait(timeout=timeout)
+        except TimeoutExpired:
+            PrintUtil.log_warn(f"Process {app_runner} is still alive, well, lets try to catch him (or use 'FORCE_CREATE -> WAIT' query for singlethread processes)")
         rc = p.returncode
         if rc == 1:
             raise ExecuteQueryException(f"Can't execute runner '{app_runner}', exit code: `1`")
@@ -675,7 +684,8 @@ class TokenExecutors:
             raise ExecuteQueryException(f"Can't find PID for '{app_runner}, maybe process freezed and don't started'")
         PrintUtil.log_debug(f"Finded {len(pids)} processes for '{app_runner}' runner")
         PrintUtil.log_debug_object(pids)
-        pid = pids[-1]
+        # not sure about child pid. but for now it's work fine, maybe should try to obtain more info?
+        pid = pids[0]
         PrintUtil.log_debug(f"Starting monitoring for the formation of '{app_runner}' window")
         while wait_lock:
             # wait for new windows opening
@@ -914,3 +924,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# TODO : create_token parse executable path!

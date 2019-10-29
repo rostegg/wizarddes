@@ -7,6 +7,8 @@ from time import sleep
 from array import array
 import datetime
 
+local_storage_path = '/etc/wizzardes'
+
 # exceptions
 class ParseTokenException(Exception):
     pass
@@ -100,23 +102,21 @@ class PrintUtil:
 
         options.debug_mode and pretty_print(msg)
 
-local_storage_path = '/etc/wizzardes'
-
 # query parser logic
 class Tokens:
-    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT, RANGE = range(17)
+    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT, RANGE, FORCE_CREATE = range(18)
 
     CONVERSION_OPERATOR = '->' 
     DEFAULT_SCENARIO_TOKEN = '*'
     AND_OPERATOR = '&'
 
-    UNARY_OPERATORS = [SWITCH, WAIT]
+    UNARY_OPERATORS = [SWITCH]
 
-    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE] 
+    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE, FORCE_CREATE] 
     RANGE_FILTERS = [ALL, FIRST, LAST, RANGE]
     DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
     SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
-    TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK, CREATE]
+    TOKENS_WITH_VALUES = [ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, DESK, CREATE, FORCE_CREATE, WAIT]
 
     @staticmethod
     def get(tokenName):
@@ -475,7 +475,9 @@ class AppRunnersLoader:
                 self.__loaders[splited[0]] = splited[1]
                 PrintUtil.log_debug(f"At line '{index}'; alias: {splited[0]}; runner: {splited[1]}")        
         except FileNotFoundError:
-            PrintUtil.log_warn(f"'app_runners' file not found, you better create one...") 
+            PrintUtil.log_warn(f"'app_runners' file not found, you better create one...")
+        except IndexError:
+            PrintUtil.log_warn(f"Can't parse 'app_runners' line, maybe wrong delimeter")
 
     def get_runner(self, name):
         try:
@@ -583,14 +585,16 @@ class TokenExecutors:
         windows_manager.switch(desktop_id)
 
     @staticmethod
-    def wait_token_execute(seconds):
+    def wait_token_execute(state):
         try:
             default_seconds = 5
-            seconds = default_seconds if seconds == Tokens.DEFAULT_SCENARIO_TOKEN or int(seconds) < 0 else int(seconds)
+            seconds = default_seconds if state['value'] == Tokens.DEFAULT_SCENARIO_TOKEN or int(state['value']) < 0 else int(state['value'])
             PrintUtil.log_debug(f"Executing 'WAIT' token for '{seconds}' seconds")
             sleep(seconds)
         except ValueError:
-            raise ExecuteQueryException(f"Can't convert {seconds} to int")
+            raise ExecuteQueryException(f"Can't convert 'WAIT' value to int")
+        finally:
+            return state
 
     @staticmethod
     def active_token_execute(state):
@@ -623,10 +627,18 @@ class TokenExecutors:
             PrintUtil.log_debug_object(target_list)
         state['target_list'] = target_list
         return state
+    
+    @staticmethod
+    def force_create_token_execute(state):
+        app_runner = app_runners.get_runner(state['value'])
+        PrintUtil.log_debug(f"Executing 'FORCE_CREATE' token, for '{app_runner}' runner")
+        Popen(app_runner.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        return state
 
     @staticmethod
     def create_token_execute(state):
         def app_pids(app):
+            # need check for fullpath executable, like /usr/bin/script-name and grep by last part (script-name)
             ps_cux_output = check_output(["ps", "cux"]).decode().split('\n')
             target_procs = [proc for proc in ps_cux_output if app in proc]
             if len(target_procs) == 0:
@@ -649,7 +661,7 @@ class TokenExecutors:
             So, for now using p.wait() for wait of ending of ui loading
             os.system(f"{app_runner} &")
         '''
-        p = Popen([app_runner], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        p = Popen(app_runner.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE)
         p.wait()
         rc = p.returncode
         if rc == 1:
@@ -699,7 +711,8 @@ EXECUTOR_FUNCS = {
     Tokens.DESK: TokenExecutors.desk_token_execute,
     Tokens.CONVERSION_OPERATOR: TokenExecutors.conversion_token_execute,
     Tokens.CREATE: TokenExecutors.create_token_execute,
-    Tokens.WAIT: TokenExecutors.wait_token_execute
+    Tokens.WAIT: TokenExecutors.wait_token_execute,
+    Tokens.FORCE_CREATE: TokenExecutors.force_create_token_execute
 }
 
 class DesktopManager:
@@ -786,7 +799,7 @@ class QueryExecutor:
                         PrintUtil.log_debug(f"After executing '{token}', executor state is:")
                         PrintUtil.log_debug_object(self.state)
         except KeyError: 
-            raise ExecuteQueryException(f"Can't execute query {self.query}, it seems that the query is not composed correctly")
+            raise ExecuteQueryException(f"Can't execute query {self.query}, it seems that the query is not composed correctly (or no executor implemented)")
 
     def __is_valid_value(self, token, value):
         if not Tokens.is_value_token(value):

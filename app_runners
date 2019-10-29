@@ -1,2 +1,4 @@
 firefox::firefox
 gnome-terminal::gnome-terminal
+vs-code::/usr/share/code/code --new-window
+intellij::/opt/idea-IU-183.5429.30/bin/idea.sh

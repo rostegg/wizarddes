@@ -255,20 +255,8 @@ Binary operators:
                             -3          - TO
                             1-3         - RANGE
                             1,3,5       - SEQUENCE
-
-Queries examples:  
-    Get all 'Firefox' instance and move them to third desktop:
-        ALL BY CONTAINS(Firefox) -> MV_TO(3)
-    Place all windows of 'Visual Code' one by one on the desktops:
-        ALL BY CONTAINS(Visual Code) -> MV_SEPARATE(*)
-    Switch to second desktop:
-        SWITCH(2)
-    Close window, with name 'Music':
-        FIRST BY FULL(Music) -> CLOSE
-    Make active window, which title match a regex:
-        FIRST BY REGEX(\s+Pict\s+) -> ACTIVE
-    Move all 'Chrome' windows (3) to 1-3 desktop:
-        ALL BY CONTAINS (Chrome) -> MV_SEPARATE(1-3)
+                        
+For more info: https://github.com/rostegg/wizarddes
 """
 
 def get_params():

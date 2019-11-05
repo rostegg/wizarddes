@@ -5,14 +5,17 @@ Wizarddes - it's 'single-file' script without dependcies (well, almost), which a
 <!-- TOC depthFrom:1 depthTo:3 withLinks:1 updateOnSave:1 orderedList:0 -->
 * [Features](#features)
 * [Install](#install)
+    - [pip](#pip)
+    - [wmctrl](#wmctrl)
 * [Usage](#usage)
 * [Query language](#query-language)
-* [Examples](#examples)
+* [Queries examples](#examples)
 <!-- /TOC -->
   
 ## Features
 
-* Windows filter (by id, title match, etc)  
+* Open apps windows
+* Filter windows (by id, title match, etc)  
 * Distribute windows between desktops range  
 * Close, move windows  
 * Simple query langauge to describe tasks  
@@ -21,17 +24,26 @@ Wizarddes - it's 'single-file' script without dependcies (well, almost), which a
 
 ## Install
 
-You just need to install [wmctrl](https://linux.die.net/man/1/wmctrl)  
+There are two options for interacting with X Server, using [wmctrl](https://linux.die.net/man/1/wmctrl) as middleware or install python dependcies using `pip`  
 
-#### Ubuntu:  
+The dependency option is preferable, because it has more features.
+
+#### pip
+```
+pip install python-xlib
+```
+#### wmctrl
+
+* ##### Ubuntu:  
 ```
 $ sudo apt install wmctrl
 ```
-  
+
 Now, just clone repository and run `install.sh`
 
-Or use oneliner for install only script and do not drag anything superfluous: 
+You can use oneliner for install only script, but then you have to create folders for additional data yourself  
 
+Script donwloads:  
 * curl
 ```
 $ curl https://raw.githubusercontent.com/rostegg/wizarddes/master/wizarddes.py --output wizarddes && chmod +x wizardess && sudo mv wizarddes /usr/bin/wizarddes
@@ -40,28 +52,68 @@ $ curl https://raw.githubusercontent.com/rostegg/wizarddes/master/wizarddes.py -
 ```
 $ wget -O wizarddes https://raw.githubusercontent.com/rostegg/wizarddes/master/wizarddes.py&& chmod +x wizardess && sudo mv wizarddes /usr/bin/wizarddes
 ```
+
 Execute `wizzardes --help` to check if it installed right   
 
-Before usage check [usage](#usage) section
+Before usage, check [usage](#usage) section
 
 ## Usage
-Before usage you can create `/etc/rules.txt` [file](https://github.com/rostegg/wizarddes/blob/master/rules.txt), which would contains rules, executable by default, if don't specified any of options parameters:  
 
-```
-$ echo "ALL BY FULL(Music) -> CLOSE" >> rules.txt
-$ sudo cp rules.txt /etc/rules.txt
-$ wizarddes # will execute /etc/rules.txt commands
-```
-Queries in files must be separated by newline  
+Wizarddes app data path: $HOME/.wizarddes
 
-If you don't provide default rules file or no specified one of the option, then, you know, it will not work  
+If you download only script with oneliner, then you need to create this folder, to use more advanced features  
+
+App folder contains:  
+* rules - [folder](https://github.com/rostegg/wizarddes/tree/master/rules), where store rules snippets for quick access  
+  - Queries in files must be separated by newline
+  - :warning: Tokens is case sensitive
+* app_runer - [file](https://github.com/rostegg/wizarddes/blob/master/app_runners), which store runners for applications
+  - Runners must be splited by `::` separator
+  - Left part - alias, right part - command, which create window
 
 Options:  
 ```
+positional arguments:
+  scenario_name         Name of rules file in wizarddes folder (by default - 'default')
+
+optional arguments:
+  --wait-process-timeout WAIT_PROCESS_TIMEOUT
+                        Timeout for wait 'CREATE' process in seconds (5 by default)
+  --queries QUERIES     Execute queries, separated by `;;`
   --single-query SINGLE_QUERY
-                        Execute single query and nothing more
-  --query-file QUERY_FILE
-                        Path to custom query file
+                        Execute single query
+  --query-file FILE_PATH
+                        Execute query from custom file
+  --debug-mode          Execute in debug mode
+  --rules-list          Display available rules files in wizarddes folder
+  --use-wmctrl          Use `wmctrl` util instead of xlib
+
+```
+
+Usage examples:  
+* Execute default rules in `$HOME/.wizarddes/rules/default` file:  
+```
+wizzardes
+```
+* Execute named rules in `$HOME/.wizarddes/rules/rules_name` file: 
+```
+wizzardes rules_name
+```
+* List of rules `$HOME/.wizarddes/rules` folder: 
+```
+wizzardes --rules-list
+```
+* Execute single query: 
+```
+wizzardes --single-query "ALL BY CONTAINS(Firefox) -> CLOSE"
+```
+* Execute multiple queries: 
+```
+wizzardes --queries "ALL BY CONTAINS(Firefox) -> CLOSE;;SWITCH(0)"
+```
+* Execute in debug mode: 
+```
+wizzardes --single-query "ALL BY CONTAINS(Firefox) -> CLOSE" --debug-mode
 ```
 
 Also, you can create really usefull linux aliases, something like this:  
@@ -71,64 +123,99 @@ $ source ~/.bash_aliases
 ```
 This snippet will close all windows on the specified virtual desktop, for example `clear_desk 0` would close all windows at first desktop  
 
-:warning: Remember, desktops count starting with 0
-
 How create queries and available command check [query language](#query-language) section or just jump to [examples](#examples) section  
 
 ## Query language
+:warning: Tokens is case sensitive  
+:warning: Token parser split tokens by space(or any non word delimeters, like tabs, etc), so don't forget to put spaces between tokens (expect tokens with value, in them you can choose whether to set delimiters or not)     
+Basic rules for queuing:
+* Tokens executing by left-to-right
+* There are operators such as 'unary', which executed as one function
+* Conversion operator (->) split query for two parts:
+  - Left (data selecting) - select and filter existing windows and return target windows
+    - Allowed multiple filters tokens, but only single selector
+    - Selectors are executed as last operators in data selecting part 
+    - CREATE also relate to data selecting part, it return created window, so no sense to use filters and selector with this operator
+    - FORCE_CREATE don't return created window, it is used in combination with `WAIT`
+  - Right (processors) - manipulate selected windows 
+    - Allowed multiple processors, but separated with `&`
+* Use `FORCE_CREATE` only in special cases, like app does not start well or does not spawn child processes;  
+Also use it if you want just run the application and not process it at all;  
+`FORCE_CREATE` don't return created window, so it can be used in pair with `WAIT` operator, or like unary operation;
+* Use `--wait-process-timeout` to setup wait time for `CREATE` operator (5 seconds by default);  
+Some apps don't spawn child process, so operator after time send such processes to the background thread and trying to find a new window that opens;  
 
-:warning: Token parser split tokens by space(or any non word delimeters, like tabs, etc), so don't forget to put spaces between tokens (expect tokens with value, in them you can choose whether to set delimiters or not)    
-
+Description:  
 ```
 Unary operators:
-    Query: SWITCH(desktopId)|CLOSE_ALL(desktopId|*)
-        SWITCH : 
+    Query: SWITCH(desktopId)
+        SWITCH: 
             Switch active desktop
                 <desktopId> - id of target desktop, starting from 0 (int, >= 0)
-        CLOSE_ALL:
-            Close all windows on target desktop
-                <desktopId> - id of target desktop, starting from 0 (int, >= 0)
-                * - current desktop id
-
-Binary opeators:
+Binary operators:
     Grab opened windows and process results.
         | - one of token
         [...] - optional token
-        -> - operator, which split data selecting and processing parts
+        -> - token, which split data selecting and processing parts
         (...) - required parameter
-    Query: ALL|SINGLE [BY ID|REGEX|CONTAINS|FULL|DESK (pattern)] -> CLOSE|MV_TO(desktopId)|MV_SEPARATE(interval|*)|ACTIVE
+        * - default scenario parameter
+        $ - allow multiple tokens
+        & - allow multiple tokens, but separeated with '&' symbol
+    Query:[CREATE(app_runner)|FORCE_CREATE(app_runner)]|[ALL|FIRST|LAST]|[BY ID(hex_string)|BY REGEX(regex)|BY CONTAINS(string)|BY FULL(sting)|BY DESK(int|*)]$ -> [CLOSE|MV_TO(int|*)|MV_SEPARATE(interval|*)|ACTIVE|WAIT(int|*)]&
         Selectors:
+            If filters not defined, select from all opened windows
             ALL:
-                Select all opened windows
-            SINGLE:
-                Select FIRST opened window
+                Select all windows from target list
+            FIRST:
+                Select first window from target list
+            LAST:
+                Select last window from target list
         Filters:
             BY ID:
-                Match window with selected id
+                Match window with selected id (hex string)
                 Example: BY ID(0xFFFFFFFF)
             BY REGEX:
                 Match window by python regex string
                 Example: BY REGEX(\s+Test\s+)
             BY CONTAINS:
-                Match window if title contains string:
+                Match window if title contains string
                 Example: BY CONTAINS(Music)
             BY FULL:
-                Match window if title match string:
+                Match window if title match string
                 Example: BY FULL(Desktop)
             BY DESK:
-                Match window in selected dekstop:
+                Match window in selected desktop:
+                <*> - current desktop
                 Example: BY DESK(2)
+        App runners:   
+            CREATE:
+                Run executable from 'app_runners' file and wait until window opened
+                Use '--wait-process-timeout' for specify waiting time (5 second by default)
+                Example: CREATE(firefox)
+            FORCE_CREATE:
+                Same as 'CREATE', but don't wait until process end, so window can't be processed in query
+                Example: FORCE_CREATE(firefox)
         Processors:
+            ACTIVE:
+                Set active target window
+                If target windows more then one, raise exception, so use filters right
+            WAIT:
+                Sleeps the set number of seconds
+                <*> - 5 seconds
+                <int> - seconds
+                Example: WAIT(1)
             CLOSE:
-                Close windows
+                Close target windows
             MV_TO:
-                Move selected windows to desktop
-                    <desktopId> - id of target desktops, starting from 0 (int, >= 0)
+                Move selected windows to target desktop
+                <*> - last desktop
+                <int> - id of target desktop, >= 0
+                Example: -> MV_TO(0) 
             MV_SEPARATE:
                 Split selected windows between desktops
-                When you create dekstops range, make sure the number of windows matches the range
-                Remember desktop count starting with 0
-                    <*> - foreach window new dekstop (it's mean, if you select 3 windows, each window would have own desktop)
+                When you create desktops range, make sure the number of windows matches the range
+                Remember, desktop count starting with 0
+                    <*> - foreach window new desktop (it's mean, if you select 3 windows, each window would have own desktop)
                     <interval> - specify range of target desktops
                          Available intervals syntax:
                             |1|1-       - FROM
@@ -142,23 +229,30 @@ Binary opeators:
     `ALL BY CONTAINS(Firefox) -> MV_TO(3)`  
     
 * Place all windows of 'Visual Code' one by one on the desktops:  
-     `ALL BY CONTAINS(Visual Code) -> MV_SEPARATE(*)`  
+     `BY CONTAINS(Visual Code) -> MV_SEPARATE(*)`  
      
 * Switch to second desktop:   
     `SWITCH(2)`  
     
-* Close window, with name 'Music':  
-    `SINGLE BY FULL(Music) -> CLOSE`  
+* Close last window, with name 'Music':  
+    `LAST BY FULL(Music) -> CLOSE`  
     
-* Make active window, which title match a regex:  
-    `SINGLE BY REGEX(\s+Pict\s+) -> ACTIVE`  
+* Make active first window, which title match a regex:  
+    `FIRST BY REGEX(\s+Pict\s+) -> ACTIVE`  
     
 * Move all 'Chrome' windows (3) to 1-3 desktop:  
     `ALL BY CONTAINS (Chrome) -> MV_SEPARATE(1-3)`  
     
 * Get all windows at second desktop and close them:  
     `ALL BY DESK(1) -> CLOSE`  
-    
-* Close all windows at current desktop:  
-    `CLOSE_ALL(*)`  
 
+* Get all windows at current desktop which title contains 'Firefox' and close them:
+    `BY DESK(*) BY CONTAINS(Firefox) -> CLOSE`
+
+* Create firefox window, move it to 0 desktop and make it active:
+    `CREATE(firefox) -> MV_TO(0) & ACTIVE`
+
+* Create firefox window and just wait 10 seconds:
+    `FORCE_CREATE(firefox) -> WAIT(10)`
+  
+    

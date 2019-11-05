@@ -145,7 +145,19 @@ Basic rules for queuing:
 Also use it if you want just run the application and not process it at all;  
 `FORCE_CREATE` don't return created window, so it can be used in pair with `WAIT` operator, or like unary operation;
 * Use `--wait-process-timeout` to setup wait time for `CREATE` operator (5 seconds by default);  
-Some apps don't spawn child process, so operator after time send such processes to the background thread and trying to find a new window that opens;  
+Some apps don't spawn child process, therefore, the operator after a timeout sends such processes to the background thread and tries to find a new window that opens;  
+So if you have apps that do not close the child process, then roughly calculate how long they will open (in my case it is 'IntelliJ', it does not signal the child process, with my settings it starts from 5 to 10 seconds);
+* Some tokens accepts DEFAULT_SCENARIO_TOKEN (*) as parameter, here description for this tokens usage:
+  - BY DESK(*) - filter by active desktop
+  - WAIT(*) - wait for 5 seconds
+  - MV_SEPARATE(*) - create range for all available desktops
+  - MV_TO(*) - create new desktop and move targets windows there 
+* Query executors provide some context between queries in single file (or executed with `--queries` parameter), in particular:
+  - If you use multiple MV_TO(*), the context will remember the id of the desktop when it is first called, for example:
+    - You have two active desktops
+    - You want execute queries like `CREATE(app) -> MV_TO(*);;CREATE(app2) -> MV_TO(*)`
+    - Wizarddes will create a third desktop and move 'app' and 'app2' there, because context remember first call of MV_TO
+    
 
 Description:  
 ```
@@ -226,6 +238,11 @@ Binary operators:
                             1,3,5       - SEQUENCE
 ```
 ## Examples
+
+* Example of query, which create development environment at single desktop (like [this](https://github.com/rostegg/wizarddes/blob/master/rules/java-dev-env))
+
+![](../assets/wizarddes-example.gif)
+
 
 * Get all 'Firefox' instance and move them to third desktop:  
     `ALL BY CONTAINS(Firefox) -> MV_TO(3)`  

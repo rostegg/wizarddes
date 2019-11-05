@@ -127,7 +127,7 @@ How create queries and available command check [query language](#query-language)
 
 ## Query language
 :warning: Tokens is case sensitive  
-:warning: Token parser split tokens by space(or any non word delimeters, like tabs, etc), so don't forget to put spaces between tokens (expect tokens with value, in them you can choose whether to set delimiters or not)     
+:warning: Token parser split tokens by space(or any non word delimeters, like tabs, etc), so don't forget to put spaces between tokens (expect tokens with value, for them you can choose whether to set delimiters or not)     
 
 
 Basic rules for queuing:

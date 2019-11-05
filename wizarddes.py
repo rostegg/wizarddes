@@ -5,8 +5,10 @@ from subprocess import Popen, PIPE, check_output, TimeoutExpired
 from argparse import RawTextHelpFormatter
 from time import sleep
 from array import array
+from pathlib import Path
 
-local_storage_path = '/etc/wizzardes'
+local_storage_path = os.path.join(Path.home(),'.wizarddes')
+rules_storage_path = os.path.join(local_storage_path, 'rules')
 
 # exceptions
 class ParseTokenException(Exception):
@@ -29,7 +31,7 @@ class NotAvailableOperatioException(Exception):
 
 # main script utils
 
-# well, wmctrl sometimes don't execute immediatly tasks range, so we need give it a little bit of time...
+# well, wmctrl sometimes don't execute immediately tasks range, so we need give it a little bit of time...
 def wait():
     sleep(0.05)
 
@@ -180,7 +182,7 @@ Unary operators:
             Switch active desktop
                 <desktopId> - id of target desktop, starting from 0 (int, >= 0)
 
-Binary opeators:
+Binary operators:
     Grab opened windows and process results.
         | - one of token
         [...] - optional token
@@ -206,7 +208,7 @@ Binary opeators:
                 Match window if title match string:
                 Example: BY FULL(Desktop)
             BY DESK:
-                Match window in selected dekstop:
+                Match window in selected desktop:
                 Example: BY DESK(2)
         Processors:
             CLOSE:
@@ -216,9 +218,9 @@ Binary opeators:
                     <desktopId> - id of target desktop, starting from 0 (int, >= 0)
             MV_SEPARATE:
                 Split selected windows between desktops
-                When you create dekstops range, make sure the number of windows matches the range
+                When you create desktops range, make sure the number of windows matches the range
                 Remember desktop count starting with 0
-                    <*> - foreach window new dekstop (it's mean, if you select 3 windows, each window would have own desktop)
+                    <*> - foreach window new desktop (it's mean, if you select 3 windows, each window would have own desktop)
                     <interval> - specify range of target desktops
                          Available intervals syntax:
                             |1|1-       - FROM
@@ -243,8 +245,8 @@ Queries examples:
 
 def get_params():
     parser = argparse.ArgumentParser(description="Automatize your desktop management", epilog=epilog_msg, formatter_class=RawTextHelpFormatter)
-    parser.add_argument('scenario_name', type=str, help=f"Name of rules file in '{local_storage_path}' folder",
-                    nargs='?', default='rules')
+    parser.add_argument('scenario_name', type=str, help=f"Name of rules file in '{rules_storage_path}' folder",
+                    nargs='?', default='default')
     parser.add_argument("--wait-process-timeout", type=int, help="Timeout for wait 'CREATE' process in seconds (5 by default)",
                     action="store", default=5)
     parser.add_argument("--queries", help="Execute queries, separated by `;;`",
@@ -289,11 +291,12 @@ class WindowsManager(object):
         raise NotAvailableOperatioException("Not implemented 'active'")
 
 # later should change data formats for windows info
+# https://specifications.freedesktop.org/wm-spec/wm-spec-latest.html
 class XlibUtils(WindowsManager):
     def __init__(self, target_display = None, root = None):
         self.display = target_display or display.Display()
         self.root = self.display.screen().root
-        self.required_windows_fieds = {
+        self.required_windows_fields = {
             'desktopId' : '_NET_WM_DESKTOP',
             'pid' : '_NET_WM_PID',
             'client' : 'WM_CLIENT_MACHINE',
@@ -307,7 +310,7 @@ class XlibUtils(WindowsManager):
         for window in target_windows:
             window_data_object = {}
             window_data_object['windowId'] = Utils.to_hex(window.id)
-            for key, value in self.required_windows_fieds.items():  
+            for key, value in self.required_windows_fields.items():  
                 value = self.__get_property(value, target=window)
                 window_data_object[key] = value
             windows_list.append(window_data_object)
@@ -449,7 +452,7 @@ class FilterObject:
     def filter(self, target_list):
         result = self.filter_func(target_list, self.filter_value)
         if len(result) == 0:
-            raise EmptyQueryResult("Zero result finded for query..") 
+            raise EmptyQueryResult("Zero result found for query..") 
         return result
 
 class Validators:
@@ -667,7 +670,7 @@ class TokenExecutors:
         # take last proc pid in list
         windows_snapshot = windows_manager.get_windows_list()
         windows_snapshot_count = len(windows_snapshot)
-        PrintUtil.log_debug(f"Taking windows snapshot, founded '{windows_snapshot_count}' windows")
+        PrintUtil.log_debug(f"Taking windows snapshot, '{windows_snapshot_count}' windows found")
         PrintUtil.log_debug_object(windows_snapshot)
         
         '''
@@ -691,7 +694,7 @@ class TokenExecutors:
         pids = app_pids(app_runner)
         if (len(pids) == 0):
             raise ExecuteQueryException(f"Can't find PID for '{app_runner}, maybe process freezed and don't started'")
-        PrintUtil.log_debug(f"Finded {len(pids)} processes for '{app_runner}' runner")
+        PrintUtil.log_debug(f"{len(pids)} processes for '{app_runner}' runner found")
         PrintUtil.log_debug_object(pids)
         # not sure about child pid. but for now it's work fine, maybe should try to obtain more info?
         #pid = pids[0]
@@ -710,7 +713,7 @@ class TokenExecutors:
                     break
             windows_snapshot = current_windows
             windows_snapshot_count = len(windows_snapshot)
-        PrintUtil.log_debug(f"Finded target window for '{app_runner}'")
+        PrintUtil.log_debug(f"Target window for '{app_runner}' found")
         PrintUtil.log_debug_object(state['target_list'])
         return state
 
@@ -770,7 +773,7 @@ class DesktopManager:
             PrintUtil.log_debug(f"Detected sequence interval type")
             return list(map(int, cleared_interval.split(',')))
         else:
-            # maybe change primal regex later, to avoide excess data (false positive triggering, beacuse all <?>)
+            # maybe change primal regex later, to avoide excess data (false positive triggering, because all <?>)
             PrintUtil.log_debug(f"Detected primal interval type, trying to obtain range")
             interval_dict = Utils.dict_from_regex(cleared_interval, primal_regex)
             print(interval_dict)
@@ -791,7 +794,7 @@ class QueryExecutor:
         PrintUtil.log_debug_object(desktop_list)
         self.state['desktopManager'] = DesktopManager(desktop_list)
     
-    def execute(self):
+    def execute(self, context = None):
         try:
             if (Tokens.is_unary(self.tokens[0])):
                 PrintUtil.log_debug(f"Detected unary token '{self.tokens[0]}' at postion '0'")
@@ -826,14 +829,14 @@ class QueryExecutor:
             raise WrongQueryParameterException(f"Seems, like after `{token}` expected value, but it's `{value}`")
 
     def __execute_unary_operator(self, tokenType):
-        PrintUtil.log_debug(f"Executing unary opearotor '{tokenType}'")
+        PrintUtil.log_debug(f"Executing unary operator '{tokenType}'")
         if (len(self.tokens) != 2):
             raise WrongQueryParameterException("Unary operator requires only value and nothing more")
         executor = EXECUTOR_FUNCS[tokenType]
         executor(self.tokens[1])
     
 class TokenParser:
-    def __init__(self, expression):
+    def __init__(self, expression, context = None):
         try:
             self.expression = expression
             self.tokens = self.tokens_list()
@@ -896,30 +899,35 @@ class TokenParser:
         reg = r"(?P<token>[\S]+)\((?P<tokenValue>[\w\s\S]+)\)"
         result = re.search(reg,token)
         if result is None:
-            raise ParseTokenException("Bad token: %s"%(token))
+            raise ParseTokenException(f"Bad token: {token}")
         return [ result['token'], result['tokenValue'] ]
 
 # main script
 
-def execute_single_query(query):
-    PrintUtil.log_info("Execute single query: %s"%query)
-    tokenizer = TokenParser(query)
+def execute_single_query(query, context = None):
+    PrintUtil.log_info(f"Execute single query: {query}")
+    context and PrintUtil.log_debug("Passed context: ")
+    context and PrintUtil.log_debug_object(context)
+    tokenizer = TokenParser(query, context)
     tokenizer.execute()
 
 def execute_queries(queries):
-    # split by ;; and execute
-    pass
+    context = None
+    queries_arr = queries.split(';;')
+    for query in queries_arr:
+        execute_single_query(query)
 
 def parse_query_file(file_path):
     return open(file_path).read().splitlines()
 
-def execute_rules_from_frile(file_path):
+def execute_rules_from_file(file_path):
     try:
+        PrintUtil.log_debug(f"Trying to parse {file_path} file")
         queries = parse_query_file(file_path)
         for query in queries:
             execute_single_query(query)
     except FileNotFoundError:
-        PrintUtil.log_error("Can't read %s query file, check if it exist or have righ permissions")
+        PrintUtil.log_error(f"Can't read '{file_path}' query file, check if it exist or have right permissions")
         exit(1)
 
 def main():
@@ -928,12 +936,9 @@ def main():
     elif options.queries:
         execute_queries(options.queries)
     elif options.query_file:
-        execute_rules_from_frile(options.query_file)
+        execute_rules_from_file(options.query_file)
     else:
-        execute_rules_from_frile(os.path.join(local_storage_path, options.scenario_name))
+        execute_rules_from_file(os.path.join(rules_storage_path, options.scenario_name))
 
 if __name__ == "__main__":
     main()
-
-
-# TODO : create_token parse executable path!

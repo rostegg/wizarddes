@@ -1,2 +1,0 @@
-ALL BY CONTAINS(Firefox) -> MV_SEPARATE(*)
-SWITCH(1)

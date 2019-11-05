@@ -68,6 +68,10 @@ class PrintUtil:
         options.debug_mode and print(f"{PrintUtil.Colors.BOLD}[DEBUG][{datetime.datetime.now()}] {msg}{PrintUtil.Colors.ENDC}")
 
     @staticmethod
+    def log_indent(msg, indent = indent_symbol):
+        print(f"{indent}{msg}")
+
+    @staticmethod
     def log_debug_object(msg):
         def color_print(text, color = PrintUtil.Colors.BOLD, end = '\n'):
             print(f"{color}{text}{PrintUtil.Colors.ENDC}", end=end)
@@ -188,38 +192,62 @@ Binary operators:
         [...] - optional token
         -> - operator, which split data selecting and processing parts
         (...) - required parameter
-    Query: ALL|FIRST [BY ID|REGEX|CONTAINS|FULL|DESK (pattern)] -> CLOSE|MV_TO(desktopId)|MV_SEPARATE(interval|*)|ACTIVE
+        * - default scenario parameter
+        $ - allow multiple appearance
+    Query:[CREATE(app_runner)|FORCE_CREATE(app_runner)]|[ALL|FIRST|LAST]|[BY ID(hex_string)|BY REGEX(regex)|BY CONTAINS(string)|BY FULL(sting)|BY DESK(int|*)]$ -> [CLOSE|MV_TO(int|*)|MV_SEPARATE(interval|*)|ACTIVE|WAIT(int|*)]
         Selectors:
+            If filters not defined, select from all opened windows
             ALL:
-                Select all opened windows
+                Select all windows from target list
             FIRST:
-                Select FIRST opened window
+                Select first window from target list
+            LAST:
+                Select last window from target list
         Filters:
             BY ID:
-                Match window with selected id
+                Match window with selected id (hex string)
                 Example: BY ID(0xFFFFFFFF)
             BY REGEX:
                 Match window by python regex string
                 Example: BY REGEX(\s+Test\s+)
             BY CONTAINS:
-                Match window if title contains string:
+                Match window if title contains string
                 Example: BY CONTAINS(Music)
             BY FULL:
-                Match window if title match string:
+                Match window if title match string
                 Example: BY FULL(Desktop)
             BY DESK:
                 Match window in selected desktop:
+                <*> - current desktop
                 Example: BY DESK(2)
+        App runners:   
+            CREATE:
+                Run executable from 'app_runners' file and wait until window opened
+                Use '--wait-process-timeout' for specify waiting time (5 second by default)
+                Example: CREATE(firefox)
+            FORCE_CREATE:
+                Same as 'CREATE', but don't wait until process end, so window can't be processed in query
+                Example: FORCE_CREATE(firefox)
         Processors:
+            ACTIVE:
+                Set active target window
+                If target windows more then one, raise exception, so use filters right
+            WAIT:
+                Sleeps the set number of seconds
+                <*> - 5 seconds
+                <int> - seconds
+                Example: WAIT(1)
             CLOSE:
-                Close windows
+                Close target windows
             MV_TO:
-                Move selected windows to desktop
-                    <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+                Move selected windows to target desktop
+                <*> - last desktop
+                <int> - id of target desktop, >= 0
+                Example: -> MV_TO(0) 
             MV_SEPARATE:
                 Split selected windows between desktops
                 When you create desktops range, make sure the number of windows matches the range
-                Remember desktop count starting with 0
+                Remember, desktop count starting with 0
                     <*> - foreach window new desktop (it's mean, if you select 3 windows, each window would have own desktop)
                     <interval> - specify range of target desktops
                          Available intervals syntax:
@@ -256,6 +284,8 @@ def get_params():
     parser.add_argument("--query-file", help="Full path to query file",
                     action="store")
     parser.add_argument("--debug-mode", help="Execute in debug mode",
+                    action="store_true")
+    parser.add_argument("--rules-list", help="Display available rules files in '{rules_storage_path}' folder",
                     action="store_true")
     parser.add_argument("--use-wmctrl", help="Use `wmctrl` util instead of xlib",
                     action="store_true")
@@ -541,6 +571,10 @@ class TokenExecutors:
 
     @staticmethod
     def desk_token_execute(state):
+        def current_desktop_id():
+            return str(next(desktop['desktopId'] for desktop in state['desktopManager'].desktop_list if desktop['active'] == "*"))
+
+        state['value'] = current_desktop_id() if state['value'] == Tokens.DEFAULT_SCENARIO_TOKEN else state['value']
         if (not Validators.is_desktop_is_valid(state['value'])):
             raise WrongQueryParameterException(f"Not valid desktop id `{state['value']}` in `BY DESK() filter`")
         filter_object = FilterObject(DataFilters.filter_by_desk, state['value'])
@@ -912,10 +946,11 @@ def execute_single_query(query, context = None):
     tokenizer.execute()
 
 def execute_queries(queries):
+    # add later
     context = None
     queries_arr = queries.split(';;')
     for query in queries_arr:
-        execute_single_query(query)
+        execute_single_query(query, context)
 
 def parse_query_file(file_path):
     return open(file_path).read().splitlines()
@@ -930,8 +965,20 @@ def execute_rules_from_file(file_path):
         PrintUtil.log_error(f"Can't read '{file_path}' query file, check if it exist or have right permissions")
         exit(1)
 
+def print_rules_list():
+    try:
+        rules_files = [f for f in os.listdir(rules_storage_path) if os.path.isfile(os.path.join(rules_storage_path, f))]
+        PrintUtil.log_success(f"Available rules files ({len(rules_files)}):")
+        for rule in rules_files:
+            PrintUtil.log_indent(rule)
+    except:
+        PrintUtil.log_error(f"Can't list '{rules_storage_path}' directory, check if it exist or have right permissions")
+        exit(1)
+
 def main():
-    if options.single_query:
+    if options.rules_list:
+        print_rules_list()
+    elif options.single_query:
         execute_single_query(options.single_query)
     elif options.queries:
         execute_queries(options.queries)

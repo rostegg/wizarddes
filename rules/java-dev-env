@@ -1,0 +1,3 @@
+CREATE(intellij) -> MV_TO(*)
+CREATE(firefox) -> MV_TO(*)
+CREATE(gnome-terminal) -> MV_TO(*) & ACTIVE

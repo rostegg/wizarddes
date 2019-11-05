@@ -348,6 +348,8 @@ class XlibUtils(WindowsManager):
             desktop_data_object['desktopId'] = desktop_id
             desktop_data_object['active'] = '*' if desktop_id == current_desktop else '-'
             work_area_data = desktops_work_area_geometry[desktop_id*4:desktop_id*4+4]
+            PrintUtil.log_debug("Recieved _NET_DESKTOP_GEOMETRY data from X Server:")
+            PrintUtil.log_debug_object(work_area_data)
             desktop_data_object['workAreaGeometry'] = f"{work_area_data[0]}.{work_area_data[1]}"
             desktop_data_object['workAreaResolution'] = f"{work_area_data[2]}x{work_area_data[3]}"
             desktop_data_object['geometry'] = f"{desktops_geometry[0]}x{desktops_geometry[1]}"
@@ -589,10 +591,20 @@ class TokenExecutors:
     # actions
     @staticmethod
     def mvto_token_execute(state):
+        def determine_dekstop_by_context():
+            # select last desktop if value is DEFAULT_SCENARIO_TOKEN  and context is None
+            current_last_desktop = str(len(state['desktopManager'].desktop_list)-1) 
+            if 'context' not in state:
+                return current_last_desktop
+            else:
+                if 'mv_to_dekstop' not in state['context']:
+                    state['context']['mv_to_dekstop'] = current_last_desktop
+                return state['context']['mv_to_dekstop']
+
         PrintUtil.log_debug(f"Executing 'MV_TO' token, target list:")
         PrintUtil.log_debug_object(state['target_list'])
-        # select last desktop if value is DEFAULT_SCENARIO_TOKEN 
-        target_desktop = state['value'] if state['value'] != Tokens.DEFAULT_SCENARIO_TOKEN else str(len(state['desktopManager'].desktop_list)-1)
+        # use context if multiple queries
+        target_desktop = state['value'] if state['value'] != Tokens.DEFAULT_SCENARIO_TOKEN else determine_dekstop_by_context()
         for window in state['target_list']:
             windows_manager.mv_to(window['windowId'], target_desktop)
             wait()
@@ -799,7 +811,6 @@ class DesktopManager:
             # maybe change primal regex later, to avoide excess data (false positive triggering, because all <?>)
             PrintUtil.log_debug(f"Detected primal interval type, trying to obtain range")
             interval_dict = Utils.dict_from_regex(cleared_interval, primal_regex)
-            print(interval_dict)
             from_id = interval_dict[0].fromId if interval_dict[0].fromId is not None else 0
             PrintUtil.log_debug(f"Decided from_id='{from_id}'")
             to_id = interval_dict[0].toId if interval_dict[0].toId is not None else default_to
@@ -819,6 +830,9 @@ class QueryExecutor:
     
     def execute(self, context = None):
         try:
+            if context:
+                self.state['context'] = context
+
             if (Tokens.is_unary(self.tokens[0])):
                 PrintUtil.log_debug(f"Detected unary token '{self.tokens[0]}' at postion '0'")
                 tokenType = Tokens.get(self.tokens[0])
@@ -844,6 +858,7 @@ class QueryExecutor:
                         self.state = executor(self.state)
                         PrintUtil.log_debug(f"After executing '{token}', executor state is:")
                         PrintUtil.log_debug_object(self.state)
+            return self.state['context'] if 'context' in self.state else None
         except KeyError: 
             raise ExecuteQueryException(f"Can't execute query {self.query}, it seems that the query is not composed correctly (or no executor implemented)")
 
@@ -859,7 +874,7 @@ class QueryExecutor:
         executor(self.tokens[1])
     
 class TokenParser:
-    def __init__(self, expression, context = None):
+    def __init__(self, expression):
         try:
             self.expression = expression
             self.tokens = self.tokens_list()
@@ -869,10 +884,11 @@ class TokenParser:
             PrintUtil.log_error(f"Error occurring, while parsing tokens for `{self.expression}`:")
             PrintUtil.log_error(str(ex))
 
-    def execute(self):
+    def execute(self, context = None):
         try:
-            self.query_executor.execute()
+            context = self.query_executor.execute(context)
             PrintUtil.log_success(f"Successfully executed '{self.expression}' query")
+            return context
         except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult, NotAvailableOperatioException) as ex:
             PrintUtil.log_error(f"Error occurring, while executing `{self.expression}`:")
             PrintUtil.log_error(str(ex))
@@ -931,25 +947,26 @@ def execute_single_query(query, context = None):
     PrintUtil.log_info(f"Execute single query: {query}")
     context and PrintUtil.log_debug("Passed context: ")
     context and PrintUtil.log_debug_object(context)
-    tokenizer = TokenParser(query, context)
-    tokenizer.execute()
+    tokenizer = TokenParser(query)
+    return tokenizer.execute(context)
 
 def execute_queries(queries):
     # add later
-    context = None
+    context = {'general_context' : True}
     queries_arr = queries.split(';;')
     for query in queries_arr:
-        execute_single_query(query, context)
+        context = execute_single_query(query, context)
 
 def parse_query_file(file_path):
     return open(file_path).read().splitlines()
 
 def execute_rules_from_file(file_path):
     try:
+        context = {'general_context' : True}
         PrintUtil.log_debug(f"Trying to parse {file_path} file")
         queries = parse_query_file(file_path)
         for query in queries:
-            execute_single_query(query)
+            context = execute_single_query(query, context)
     except FileNotFoundError:
         PrintUtil.log_error(f"Can't read '{file_path}' query file, check if it exist or have right permissions")
         exit(1)

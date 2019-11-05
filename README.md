@@ -19,12 +19,6 @@ Wizarddes - it's 'single-file' script without dependcies (well, almost), which a
 * Single and multiple tasks execution 
 * Execution queries from file
 
-```
-TODO: Support for remaining commands:  
-    RESIZE(mvarg)|STATE(starg)|RENAME(name)
-    VIEWPORT(x,y)
-```
-
 ## Install
 
 You just need to install [wmctrl](https://linux.die.net/man/1/wmctrl)  

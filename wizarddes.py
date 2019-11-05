@@ -348,7 +348,7 @@ class XlibUtils(WindowsManager):
             desktop_data_object['desktopId'] = desktop_id
             desktop_data_object['active'] = '*' if desktop_id == current_desktop else '-'
             work_area_data = desktops_work_area_geometry[desktop_id*4:desktop_id*4+4]
-            PrintUtil.log_debug("Recieved _NET_DESKTOP_GEOMETRY data from X Server:")
+            PrintUtil.log_debug(f"Recieved '_NET_DESKTOP_GEOMETRY' respons from X Server for '{desktop_id}':")
             PrintUtil.log_debug_object(work_area_data)
             desktop_data_object['workAreaGeometry'] = f"{work_area_data[0]}.{work_area_data[1]}"
             desktop_data_object['workAreaResolution'] = f"{work_area_data[2]}x{work_area_data[3]}"

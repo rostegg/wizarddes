@@ -190,11 +190,12 @@ Binary operators:
     Grab opened windows and process results.
         | - one of token
         [...] - optional token
-        -> - operator, which split data selecting and processing parts
+        -> - token, which split data selecting and processing parts
         (...) - required parameter
         * - default scenario parameter
-        $ - allow multiple appearance
-    Query:[CREATE(app_runner)|FORCE_CREATE(app_runner)]|[ALL|FIRST|LAST]|[BY ID(hex_string)|BY REGEX(regex)|BY CONTAINS(string)|BY FULL(sting)|BY DESK(int|*)]$ -> [CLOSE|MV_TO(int|*)|MV_SEPARATE(interval|*)|ACTIVE|WAIT(int|*)]
+        $ - allow multiple tokens
+        & - allow multiple tokens, but separeated with '&' symbol
+    Query:[CREATE(app_runner)|FORCE_CREATE(app_runner)]|[ALL|FIRST|LAST]|[BY ID(hex_string)|BY REGEX(regex)|BY CONTAINS(string)|BY FULL(sting)|BY DESK(int|*)]$ -> [CLOSE|MV_TO(int|*)|MV_SEPARATE(interval|*)|ACTIVE|WAIT(int|*)]&
         Selectors:
             If filters not defined, select from all opened windows
             ALL:
@@ -273,7 +274,7 @@ def get_params():
                     action="store")
     parser.add_argument("--debug-mode", help="Execute in debug mode",
                     action="store_true")
-    parser.add_argument("--rules-list", help="Display available rules files in '{rules_storage_path}' folder",
+    parser.add_argument("--rules-list", help=f"Display available rules files in '{rules_storage_path}' folder",
                     action="store_true")
     parser.add_argument("--use-wmctrl", help="Use `wmctrl` util instead of xlib",
                     action="store_true")

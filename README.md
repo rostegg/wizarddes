@@ -128,6 +128,8 @@ How create queries and available command check [query language](#query-language)
 ## Query language
 :warning: Tokens is case sensitive  
 :warning: Token parser split tokens by space(or any non word delimeters, like tabs, etc), so don't forget to put spaces between tokens (expect tokens with value, in them you can choose whether to set delimiters or not)     
+
+
 Basic rules for queuing:
 * Tokens executing by left-to-right
 * There are operators such as 'unary', which executed as one function
@@ -243,16 +245,16 @@ Binary operators:
 * Move all 'Chrome' windows (3) to 1-3 desktop:  
     `ALL BY CONTAINS (Chrome) -> MV_SEPARATE(1-3)`  
     
-* Get all windows at second desktop and close them:  
-    `ALL BY DESK(1) -> CLOSE`  
+* Get all windows at second desktop and close them:   
+    `ALL BY DESK(1) -> CLOSE`   
 
-* Get all windows at current desktop which title contains 'Firefox' and close them:
-    `BY DESK(*) BY CONTAINS(Firefox) -> CLOSE`
+* Get all windows at current desktop which title contains 'Firefox' and close them:   
+    `BY DESK(*) BY CONTAINS(Firefox) -> CLOSE`   
 
-* Create firefox window, move it to 0 desktop and make it active:
-    `CREATE(firefox) -> MV_TO(0) & ACTIVE`
+* Create firefox window, move it to 0 desktop and make it active:   
+    `CREATE(firefox) -> MV_TO(0) & ACTIVE`   
 
-* Create firefox window and just wait 10 seconds:
+* Create firefox window and just wait 10 seconds:   
     `FORCE_CREATE(firefox) -> WAIT(10)`
   
     

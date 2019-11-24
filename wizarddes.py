@@ -198,7 +198,7 @@ class PrintUtil:
 
 # query parser logic
 class Tokens:
-    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT, RANGE, FORCE_CREATE, PRINT = range(19)
+    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT, RANGE, FORCE_CREATE, PRINT, PRINT_DESKTOPS = range(20)
 
     CONVERSION_OPERATOR = '->' 
     DEFAULT_SCENARIO_TOKEN = '*'
@@ -206,7 +206,7 @@ class Tokens:
 
     UNARY_OPERATORS = [SWITCH]
 
-    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE, FORCE_CREATE, BY, PRINT] 
+    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE, FORCE_CREATE, BY, PRINT, PRINT_DESKTOPS] 
     RANGE_FILTERS = [ALL, FIRST, LAST, RANGE]
     DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
     SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
@@ -749,7 +749,16 @@ class TokenExecutors:
     
     @staticmethod
     def print_token_execute(state):
+        PrintUtil.log_debug(f"Executing 'PRINT' token")
         target = state['target_list']
+        table_formater = PrintUtil.TableFormater(target)
+        table_formater.print_table()
+        return state
+
+    @staticmethod
+    def print_desktops_token_execute(state):
+        PrintUtil.log_debug(f"Executing 'PRINT_DESKTOPS' token")
+        target = state['desktopManager'].desktop_list
         table_formater = PrintUtil.TableFormater(target)
         table_formater.print_table()
         return state
@@ -869,7 +878,8 @@ EXECUTOR_FUNCS = {
     Tokens.WAIT: TokenExecutors.wait_token_execute,
     Tokens.FORCE_CREATE: TokenExecutors.force_create_token_execute,
     Tokens.BY: TokenExecutors.by_token_execute,
-    Tokens.PRINT: TokenExecutors.print_token_execute
+    Tokens.PRINT: TokenExecutors.print_token_execute,
+    Tokens.PRINT_DESKTOPS: TokenExecutors.print_desktops_token_execute
 }
 
 class DesktopManager:
@@ -959,7 +969,7 @@ class QueryExecutor:
                         PrintUtil.log_debug_object(self.state)
             return self.state['context'] if 'context' in self.state else None
         except KeyError: 
-            raise ExecuteQueryException(f"Can't execute query {self.query}, it seems that the query is not composed correctly (or no executor implemented)")
+            raise ExecuteQueryException(f"Can't execute query {self.query}, it seems that no executor implemented")
 
     def __is_valid_value(self, token, value):
         if not Tokens.is_value_token(value):
@@ -985,9 +995,13 @@ class TokenParser:
 
     def execute(self, context = None):
         try:
-            context = self.query_executor.execute(context)
-            PrintUtil.log_success(f"Successfully executed '{self.expression}' query")
-            return context
+            try:
+                context = self.query_executor.execute(context)
+                PrintUtil.log_success(f"Successfully executed '{self.expression}' query")
+            except AttributeError:
+                PrintUtil.log_error(f"Can't execute query, because bad token")
+            finally:
+                return context
         except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult, NotAvailableOperatioException, TableFormaterException) as ex:
             PrintUtil.log_error(f"Error occurring, while executing `{self.expression}`:")
             PrintUtil.log_error(str(ex))
@@ -1050,7 +1064,6 @@ def execute_single_query(query, context = None):
     return tokenizer.execute(context)
 
 def execute_queries(queries):
-    # add later
     context = {'general_context' : True}
     queries_arr = queries.split(';;')
     for query in queries_arr:

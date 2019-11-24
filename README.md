@@ -164,10 +164,13 @@ So if you have apps that do not close the child process, then roughly calculate 
 Description:  
 ```
 Unary operators:
-    Query: SWITCH(desktopId)
+    Query: SWITCH(desktopId) | PRINT_DESKTOPS
         SWITCH: 
             Switch active desktop
                 <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+        PRINT_DESKTOPS:
+            Print table of active desktops
+
 Binary operators:
     Grab opened windows and process results.
         | - one of token
@@ -280,3 +283,6 @@ Binary operators:
 
 * Print all windows:   
     `ALL -> PRINT`
+
+* Print all desktops:    
+    `PRINT_DESKTOPS`

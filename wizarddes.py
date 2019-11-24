@@ -66,10 +66,10 @@ class PrintUtil:
                 raise TableFormaterException("Table data size must be > 0")
             self.data = data
             self.headers = self.data[0].keys()
-            self.rows, self.columns = self.table_size()
-            self.columns_width = self.count_columns_width()
+            self.rows, self.columns = self.__table_size()
+            self.columns_width = self.__count_columns_width()
             
-        def table_size(self):
+        def __table_size(self):
             def assert_struct(objs, required_fields_number):
                 for obj in objs:
                     if len(obj.keys()) != required_fields_number:
@@ -80,25 +80,29 @@ class PrintUtil:
                 assert_struct(self.data[1:], columns)
             return (rows, columns)
 
-        def count_columns_width(self):
+        def __count_columns_width(self):
+            def find_max(header, width = 0):
+                for value in self.data:
+                    str_value = str(value[header])
+                    width = len(str_value) if len(str_value) > width else width
+                return width
+
             widths = list()
             for header in self.headers:
-                width = 0
-                for obj in self.data:
-                    str_obj = str(obj[header])
-                    width = len(str_obj) if len(str_obj) > width else width
+                # +2 for spaces
+                width = find_max(header) + 2
+                diff = width - len(header)
+                # bigger indent, if header size > any value
+                width = width + abs(diff) + 2 if diff <= 1 else width
                 widths.append(width)
             return widths
 
+
         def print_table(self):
-            def format_line(values, left_separator, right_separator, middle_separator, space_char = self.SPACE, recount_width = False):
+            def format_line(values, left_separator, right_separator, middle_separator, space_char = self.SPACE):
                 line = ""
                 for index, value in enumerate(values):
                     diff = self.columns_width[index] - len(str(value))
-                    if diff <= 1:
-                        if recount_width:
-                            self.columns_width[index] += abs(diff) + 2
-                            diff = self.columns_width[index] - len(str(value))
                     indent_before = int(diff/2)
                     indent_after = diff - int(diff/2)
                     
@@ -110,10 +114,11 @@ class PrintUtil:
                         chunck = f"{middle_separator}{space_char*indent_before}{value}{space_char*indent_after}{right_separator}"
                     else:
                         chunck = f"{middle_separator}{space_char*indent_before}{value}{space_char*indent_after}"
+                    
                     line += chunck
                 return line        
-                
-            headers_line = format_line(self.headers, self.VERTICAL, self.VERTICAL, self.VERTICAL, recount_width=True)
+            
+            headers_line = format_line(self.headers, self.VERTICAL, self.VERTICAL, self.VERTICAL)
 
             full_width = sum(self.columns_width)
 
@@ -279,7 +284,7 @@ Binary operators:
         * - default scenario parameter
         $ - allow multiple tokens
         & - allow multiple tokens, but separeated with '&' symbol
-    Query:[CREATE(app_runner)|FORCE_CREATE(app_runner)]|[ALL|FIRST|LAST]|[BY ID(hex_string)|BY REGEX(regex)|BY CONTAINS(string)|BY FULL(sting)|BY DESK(int|*)]$ -> [CLOSE|MV_TO(int|*)|MV_SEPARATE(interval|*)|ACTIVE|WAIT(int|*)]&
+    Query:[CREATE(app_runner)|FORCE_CREATE(app_runner)]|[ALL|FIRST|LAST]|[BY ID(hex_string)|BY REGEX(regex)|BY CONTAINS(string)|BY FULL(sting)|BY DESK(int|*)]$ -> [CLOSE|PRINT|MV_TO(int|*)|MV_SEPARATE(interval|*)|ACTIVE|WAIT(int|*)]&
         Selectors:
             If filters not defined, select from all opened windows
             ALL:

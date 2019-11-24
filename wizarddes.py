@@ -29,6 +29,9 @@ class EmptyQueryResult(Exception):
 class NotAvailableOperatioException(Exception):
     pass
 
+class TableFormaterException(Exception):
+    pass
+
 # main script utils
 
 # well, wmctrl sometimes don't execute immediately tasks range, so we need give it a little bit of time...
@@ -46,6 +49,87 @@ class PrintUtil:
         BOLD = '\033[1m'
 
     indent_symbol = ' '
+
+    class TableFormater():
+        TOP_LEFT = '╭─'
+        TOP_RIGHT = '─╮'
+        BOTTOM_LEFT = '╰─'
+        BOTTOM_RIGTH = '─╯'
+        HORIZONTAL = '─'
+        VERTICAL = '│'
+        TRANSITION_LEFT = '├─'
+        TRANSITION_RIGHT = '─┤'
+        SPACE = ' '
+
+        def __init__(self, data):
+            if len(data) <= 0:
+                raise TableFormaterException("Table data size must be > 0")
+            self.data = data
+            self.headers = self.data[0].keys()
+            self.rows, self.columns = self.table_size()
+            self.columns_width = self.count_columns_width()
+            
+        def table_size(self):
+            def assert_struct(objs, required_fields_number):
+                for obj in objs:
+                    if len(obj.keys()) != required_fields_number:
+                        raise TableFormaterException("Different objects structures, can't print this")
+            rows = len(self.data)
+            columns = len(self.headers)
+            if len(self.data) > 1:
+                assert_struct(self.data[1:], columns)
+            return (rows, columns)
+
+        def count_columns_width(self):
+            widths = list()
+            for header in self.headers:
+                width = 0
+                for obj in self.data:
+                    str_obj = str(obj[header])
+                    width = len(str_obj) if len(str_obj) > width else width
+                widths.append(width)
+            return widths
+
+        def print_table(self):
+            def format_line(values, left_separator, right_separator, middle_separator, space_char = self.SPACE, recount_width = False):
+                line = ""
+                for index, value in enumerate(values):
+                    diff = self.columns_width[index] - len(str(value))
+                    if diff <= 1:
+                        if recount_width:
+                            self.columns_width[index] += abs(diff) + 2
+                            diff = self.columns_width[index] - len(str(value))
+                    indent_before = int(diff/2)
+                    indent_after = diff - int(diff/2)
+                    
+                    if index == 0:
+                        indent_before += 1
+                        chunck = f"{left_separator}{space_char*indent_before}{value}{space_char*indent_after}"
+                    elif index == (len(values) - 1):
+                        indent_after += 1
+                        chunck = f"{middle_separator}{space_char*indent_before}{value}{space_char*indent_after}{right_separator}"
+                    else:
+                        chunck = f"{middle_separator}{space_char*indent_before}{value}{space_char*indent_after}"
+                    line += chunck
+                return line        
+                
+            headers_line = format_line(self.headers, self.VERTICAL, self.VERTICAL, self.VERTICAL, recount_width=True)
+
+            full_width = sum(self.columns_width)
+
+            width_with_indents = full_width + (self.columns*2 - self.columns - 1)
+            # top line
+            print(f"{self.TOP_LEFT}{self.HORIZONTAL*width_with_indents}{self.TOP_RIGHT}")
+            # headers
+            print(headers_line)
+            delimiter = f"{self.TRANSITION_LEFT}{self.HORIZONTAL*width_with_indents}{self.TRANSITION_RIGHT}"
+            print(delimiter)
+            for index, obj in enumerate(self.data):
+                line = format_line(obj.values(), self.VERTICAL, self.VERTICAL, self.VERTICAL)
+                print(line)
+                index < (len(self.data) - 1) and print(delimiter)
+            # bottom line
+            print(f"{self.BOTTOM_LEFT}{self.HORIZONTAL*width_with_indents}{self.BOTTOM_RIGTH}")
 
     @staticmethod
     def log_error(msg):
@@ -109,7 +193,7 @@ class PrintUtil:
 
 # query parser logic
 class Tokens:
-    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT, RANGE, FORCE_CREATE = range(18)
+    ALL, FIRST, LAST, BY, ID, REGEX, CONTAINS, FULL, CLOSE, MV_SEPARATE, MV_TO, SWITCH, ACTIVE, DESK, CREATE, WAIT, RANGE, FORCE_CREATE, PRINT = range(19)
 
     CONVERSION_OPERATOR = '->' 
     DEFAULT_SCENARIO_TOKEN = '*'
@@ -117,7 +201,7 @@ class Tokens:
 
     UNARY_OPERATORS = [SWITCH]
 
-    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE, FORCE_CREATE, BY] 
+    EXECUTABLE = [ALL, FIRST, LAST, ID, REGEX, CONTAINS, FULL, MV_TO, MV_SEPARATE, CLOSE, ACTIVE, SWITCH, DESK, CONVERSION_OPERATOR, CREATE, WAIT, RANGE, FORCE_CREATE, BY, PRINT] 
     RANGE_FILTERS = [ALL, FIRST, LAST, RANGE]
     DATA_FILTERS = [ID, REGEX, CONTAINS, FULL, DESK]
     SPECIAL_OPERATOR = [CONVERSION_OPERATOR, AND_OPERATOR]
@@ -230,6 +314,8 @@ Binary operators:
                 Same as 'CREATE', but don't wait until process end, so window can't be processed in query
                 Example: FORCE_CREATE(firefox)
         Processors:
+            PRINT:
+                Display table of target windows
             ACTIVE:
                 Set active target window
                 If target windows more then one, raise exception, so use filters right
@@ -655,6 +741,13 @@ class TokenExecutors:
             raise WrongQueryParameterException(f"Not valid window id {target} for `ACTIVE`")
         windows_manager.active(target)
         return state
+    
+    @staticmethod
+    def print_token_execute(state):
+        target = state['target_list']
+        table_formater = PrintUtil.TableFormater(target)
+        table_formater.print_table()
+        return state
 
     @staticmethod
     def conversion_token_execute(state):
@@ -770,7 +863,8 @@ EXECUTOR_FUNCS = {
     Tokens.CREATE: TokenExecutors.create_token_execute,
     Tokens.WAIT: TokenExecutors.wait_token_execute,
     Tokens.FORCE_CREATE: TokenExecutors.force_create_token_execute,
-    Tokens.BY: TokenExecutors.by_token_execute
+    Tokens.BY: TokenExecutors.by_token_execute,
+    Tokens.PRINT: TokenExecutors.print_token_execute
 }
 
 class DesktopManager:
@@ -889,7 +983,7 @@ class TokenParser:
             context = self.query_executor.execute(context)
             PrintUtil.log_success(f"Successfully executed '{self.expression}' query")
             return context
-        except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult, NotAvailableOperatioException) as ex:
+        except (WrongQueryParameterException, ExecuteQueryException, WmctrlExeption, EmptyQueryResult, NotAvailableOperatioException, TableFormaterException) as ex:
             PrintUtil.log_error(f"Error occurring, while executing `{self.expression}`:")
             PrintUtil.log_error(str(ex))
 

@@ -270,10 +270,12 @@ class Utils:
 
 epilog_msg = r"""
 Unary operators:
-    Query: SWITCH(desktopId)
+    Query: SWITCH(desktopId) | PRINT_DESKTOPS
         SWITCH: 
             Switch active desktop
                 <desktopId> - id of target desktop, starting from 0 (int, >= 0)
+        PRINT_DESKTOPS:
+            Print table of active desktops
 
 Binary operators:
     Grab opened windows and process results.

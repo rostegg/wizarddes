@@ -63,6 +63,8 @@ Wizarddes app data path: $HOME/.wizarddes
 
 If you download only script with oneliner, then you need to create this folder, to use more advanced features  
 
+:warning:For usage with `wmctrl` don't forget `--use-wmctrl` option, wizarddes uses xlib by default  
+
 App folder contains:  
 * rules - [folder](https://github.com/rostegg/wizarddes/tree/master/rules), where store rules snippets for quick access  
   - Queries in files must be separated by newline

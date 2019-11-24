@@ -268,7 +268,7 @@ class Utils:
         except OSError:
             return False
 
-epilog_msg = """
+epilog_msg = r"""
 Unary operators:
     Query: SWITCH(desktopId)
         SWITCH: 

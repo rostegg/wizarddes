@@ -1,6 +1,6 @@
 # Automate your desktop windows management with single script.
 
-Wizarddes - it's 'single-file' script without dependcies (well, almost), which allow automate windows management, like close window or move it to another virtual desktop.   
+Wizarddes - it's 'single-file' script without dependencies (well, almost), which allow automate windows management, like close window or move it to another virtual desktop.   
   
 <!-- TOC depthFrom:1 depthTo:3 withLinks:1 updateOnSave:1 orderedList:0 -->
 * [Features](#features)

@@ -212,6 +212,8 @@ Binary operators:
                 Same as 'CREATE', but don't wait until process end, so window can't be processed in query
                 Example: FORCE_CREATE(firefox)
         Processors:
+            PRINT:
+                Display table of target windows
             ACTIVE:
                 Set active target window
                 If target windows more then one, raise exception, so use filters right
@@ -275,5 +277,6 @@ Binary operators:
 
 * Create firefox window and just wait 10 seconds:   
     `FORCE_CREATE(firefox) -> WAIT(10)`
-  
-    
+
+* Print all windows:   
+    `ALL -> PRINT`

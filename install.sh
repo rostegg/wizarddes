@@ -4,7 +4,7 @@ function green {
 }
 
 chmod +x wizarddes.py
-echo -e "Copy" $(green "wizzardes") "executable to" $(green "/usr/bin/")  
+echo -e "Copy" $(green "wizarddes") "executable to" $(green "/usr/bin/")  
 sudo cp wizarddes.py /usr/bin/wizarddes
 DIR="${HOME}/.wizarddes"
 if [ -d "$DIR" ]; then

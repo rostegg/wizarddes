@@ -46,14 +46,14 @@ You can use oneliner for install only script, but then you have to create folder
 Script donwloads:  
 * curl
 ```
-$ curl https://raw.githubusercontent.com/rostegg/wizarddes/master/wizarddes.py --output wizarddes && chmod +x wizardess && sudo mv wizarddes /usr/bin/wizarddes
+$ curl https://raw.githubusercontent.com/rostegg/wizarddes/master/wizarddes.py --output wizarddes && chmod +x wizarddes && sudo mv wizarddes /usr/bin/wizarddes
 ```
 * wget
 ```
-$ wget -O wizarddes https://raw.githubusercontent.com/rostegg/wizarddes/master/wizarddes.py&& chmod +x wizardess && sudo mv wizarddes /usr/bin/wizarddes
+$ wget -O wizarddes https://raw.githubusercontent.com/rostegg/wizarddes/master/wizarddes.py&& chmod +x wizarddes && sudo mv wizarddes /usr/bin/wizarddes
 ```
 
-Execute `wizzardes --help` to check if it installed right   
+Execute `wizarddes --help` to check if it installed right   
 
 Before usage, check [usage](#usage) section
 
@@ -95,27 +95,27 @@ optional arguments:
 Usage examples:  
 * Execute default rules in `$HOME/.wizarddes/rules/default` file:  
 ```
-wizzardes
+wizardes
 ```
 * Execute named rules in `$HOME/.wizarddes/rules/rules_name` file: 
 ```
-wizzardes rules_name
+wizardes rules_name
 ```
 * List of rules `$HOME/.wizarddes/rules` folder: 
 ```
-wizzardes --rules-list
+wizardes --rules-list
 ```
 * Execute single query: 
 ```
-wizzardes --single-query "ALL BY CONTAINS(Firefox) -> CLOSE"
+wizardes --single-query "ALL BY CONTAINS(Firefox) -> CLOSE"
 ```
 * Execute multiple queries: 
 ```
-wizzardes --queries "ALL BY CONTAINS(Firefox) -> CLOSE;;SWITCH(0)"
+wizardes --queries "ALL BY CONTAINS(Firefox) -> CLOSE;;SWITCH(0)"
 ```
 * Execute in debug mode: 
 ```
-wizzardes --single-query "ALL BY CONTAINS(Firefox) -> CLOSE" --debug-mode
+wizardes --single-query "ALL BY CONTAINS(Firefox) -> CLOSE" --debug-mode
 ```
 
 Also, you can create really usefull linux aliases, something like this:  
